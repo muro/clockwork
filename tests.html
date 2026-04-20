@@ -1,0 +1,321 @@
+<!doctype html>
+<!--
+  tests.html — in-browser unit tests.
+  Loads engine.js and runs assertions against pure logic + localStorage.
+  Open directly in any browser, or via any static server.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Uhrzeit Tests</title>
+<style>
+  :root { color-scheme: light dark; }
+  html, body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif; background: #fafafa; color: #222; }
+  body { padding: 24px; max-width: 920px; margin: 0 auto; }
+  h1 { margin: 0 0 6px; font-size: 22px; }
+  .summary { font-weight: 600; margin: 8px 0 20px; }
+  .summary.ok { color: #1b7f1b; }
+  .summary.fail { color: #b30000; }
+  .group { margin-bottom: 20px; }
+  .group-title { font-weight: 600; margin: 12px 0 4px; font-size: 13px; color: #555; text-transform: uppercase; letter-spacing: 0.08em; }
+  ul { list-style: none; padding: 0; margin: 0; }
+  li { padding: 4px 8px; font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; line-height: 1.5; border-radius: 4px; }
+  li.pass { color: #1b7f1b; }
+  li.fail { color: #b30000; background: #fff4f4; white-space: pre-wrap; }
+  button { font: inherit; padding: 8px 14px; border-radius: 6px; border: 1px solid #888; background: #fff; cursor: pointer; }
+  @media (prefers-color-scheme: dark) {
+    html, body { background: #1a1a1a; color: #ddd; }
+    li.fail { background: #3a1a1a; color: #ff9999; }
+    button { background: #2a2a2a; color: #ddd; border-color: #555; }
+  }
+</style>
+</head>
+<body>
+<h1>Uhrzeit Lernen — tests</h1>
+<div id="summary" class="summary">running…</div>
+<button onclick="location.reload()">Re-run</button>
+<div id="results"></div>
+
+<script src="engine.js"></script>
+<script>
+// ─────────────────────────────────────────────────────────────
+// tiny test framework
+// ─────────────────────────────────────────────────────────────
+const groups = [];
+let currentGroup = null;
+function group(name, fn) { currentGroup = { name, tests: [] }; groups.push(currentGroup); fn(); currentGroup = null; }
+function test(name, fn) { currentGroup.tests.push({ name, fn }); }
+function eq(a, b, msg = '') {
+  const A = JSON.stringify(a), B = JSON.stringify(b);
+  if (A !== B) throw new Error(`${msg ? msg + ' — ' : ''}expected ${B}, got ${A}`);
+}
+function ok(v, msg = '') { if (!v) throw new Error(msg || `expected truthy, got ${JSON.stringify(v)}`); }
+function contains(arr, v, msg = '') { ok(arr.includes(v), `${msg} — expected array to contain ${JSON.stringify(v)}, got ${JSON.stringify(arr)}`); }
+function run() {
+  let pass = 0, fail = 0;
+  const res = document.getElementById('results');
+  for (const g of groups) {
+    const wrap = document.createElement('div'); wrap.className = 'group';
+    const h = document.createElement('div'); h.className = 'group-title'; h.textContent = g.name;
+    const ul = document.createElement('ul');
+    wrap.appendChild(h); wrap.appendChild(ul);
+    for (const t of g.tests) {
+      const li = document.createElement('li');
+      try { t.fn(); pass++; li.className = 'pass'; li.textContent = '✓ ' + t.name; }
+      catch (e) { fail++; li.className = 'fail'; li.textContent = '✗ ' + t.name + '\n    ' + e.message; }
+      ul.appendChild(li);
+    }
+    res.appendChild(wrap);
+  }
+  const sum = document.getElementById('summary');
+  sum.textContent = `${pass + fail} tests · ${pass} passed · ${fail} failed`;
+  sum.className = 'summary ' + (fail === 0 ? 'ok' : 'fail');
+  return { pass, fail };
+}
+
+// ─────────────────────────────────────────────────────────────
+// ENGINE — parseTime / hourName / digitalFromQ / wordFromQ
+// ─────────────────────────────────────────────────────────────
+group('hourName & parseTime', () => {
+  test('hourName cycles 12-based', () => {
+    eq(hourName(1), 'eins'); eq(hourName(12), 'zwölf'); eq(hourName(13), 'eins');
+  });
+  test('parseTime(3, 0) → "drei Uhr"', () => {
+    const p = parseTime(3, 0);
+    eq(p.fullWord, 'drei Uhr'); eq(p.minute, null); eq(p.next, 4);
+  });
+  test('parseTime(3, 30) → "halb vier" (advances hour)', () => {
+    const p = parseTime(3, 30);
+    eq(p.fullWord, 'halb vier'); eq(p.minute, 'halb'); eq(p.hour, 4);
+  });
+  test('parseTime(12, 30) → "halb eins" (12→1 wrap)', () => {
+    eq(parseTime(12, 30).fullWord, 'halb eins');
+  });
+  test('parseTime(1, 15) → "Viertel nach eins"', () => {
+    eq(parseTime(1, 15).fullWord, 'Viertel nach eins');
+  });
+  test('parseTime(1, 45) → "Viertel vor zwei"', () => {
+    eq(parseTime(1, 45).fullWord, 'Viertel vor zwei');
+  });
+  test('parseTime(5, 25) → "fünf vor halb sechs"', () => {
+    eq(parseTime(5, 25).fullWord, 'fünf vor halb sechs');
+  });
+  test('parseTime(5, 35) → "fünf nach halb sechs"', () => {
+    eq(parseTime(5, 35).fullWord, 'fünf nach halb sechs');
+  });
+  test('all minute-set entries produce a defined fullWord', () => {
+    for (const m of MINUTE_SETS.fuenf) {
+      for (let h = 1; h <= 12; h++) {
+        const p = parseTime(h, m);
+        ok(p && typeof p.fullWord === 'string' && p.fullWord.length > 0, `h=${h} m=${m}`);
+      }
+    }
+  });
+});
+
+group('digitalFromQ / wordFromQ', () => {
+  test('digitalFromQ uses dh if present (24h)', () => {
+    eq(digitalFromQ({ h: 2, m: 30, dh: 14, parsed: parseTime(2, 30) }), '14:30');
+  });
+  test('digitalFromQ falls back to h (12h)', () => {
+    eq(digitalFromQ({ h: 2, m: 5, parsed: parseTime(2, 5) }), '2:05');
+  });
+  test('wordFromQ returns parsed.fullWord', () => {
+    eq(wordFromQ({ parsed: parseTime(3, 30) }), 'halb vier');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// SNAP
+// ─────────────────────────────────────────────────────────────
+group('snap5deg / snapHour', () => {
+  test('snap5deg snaps 0° → 0 min', () => eq(snap5deg(0), 0));
+  test('snap5deg snaps 92° → 15 min (5-min grid)', () => eq(snap5deg(92), 15));
+  test('snap5deg wraps 360° → 0', () => eq(snap5deg(360), 0));
+  test('snap5deg handles negative', () => eq(snap5deg(-6), 59));
+  test('snapHour snaps 0° → 12', () => eq(snapHour(0), 12));
+  test('snapHour snaps 90° → 3', () => eq(snapHour(90), 3));
+  test('snapHour snaps 359° → 12', () => eq(snapHour(359), 12));
+});
+
+// ─────────────────────────────────────────────────────────────
+// MASTERY
+// ─────────────────────────────────────────────────────────────
+group('masteryTier', () => {
+  test('≥10 → tier 3', () => eq(masteryTier(10), 3));
+  test('9 → tier 2',     () => eq(masteryTier(9), 2));
+  test('8 → tier 1',     () => eq(masteryTier(8), 1));
+  test('0..7 → tier 0',  () => { for (let i = 0; i <= 7; i++) eq(masteryTier(i), 0, `c=${i}`); });
+});
+
+group('recordMastery', () => {
+  test('adds fresh entry', () => {
+    const next = recordMastery({}, 3, 8);
+    eq(next[3], { tier: 1, best: 8, last: 8 });
+  });
+  test('best and tier only go up', () => {
+    let m = recordMastery({}, 3, 10);             // tier 3, best 10
+    m = recordMastery(m, 3, 5);                    // worse run should not lower tier/best
+    eq(m[3].tier, 3); eq(m[3].best, 10); eq(m[3].last, 5);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// EXERCISE TYPE: LESEN (clock → digital)
+// ─────────────────────────────────────────────────────────────
+group('exercise: lesen', () => {
+  for (const minuteSet of ['volle', 'halbe', 'viertel', 'fuenf']) {
+    test(`options for "${minuteSet}" include correct and are 4 unique`, () => {
+      const level = { mode: 'lesen', minuteSet, hour24: false };
+      for (const m of MINUTE_SETS[minuteSet]) {
+        for (let h = 1; h <= 12; h++) {
+          const q = { h, m, dh: h, parsed: parseTime(h, m) };
+          const { options } = buildDigitalOptions(q, level);
+          eq(options.length, 4, `h=${h} m=${m}`);
+          eq(new Set(options).size, 4, `unique h=${h} m=${m}`);
+          contains(options, digitalFromQ(q), `correct included h=${h} m=${m}`);
+        }
+      }
+    });
+  }
+  test('24h options include both AM and PM twin (12h-offset)', () => {
+    const level = { mode: 'lesen', minuteSet: 'fuenf', hour24: true };
+    const q = { h: 2, m: 30, dh: 14, parsed: parseTime(2, 30) };
+    const { options } = buildDigitalOptions(q, level);
+    contains(options, '14:30');
+    contains(options, '2:30');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// EXERCISE TYPE: WORT-LESEN (clock → phrase)
+// ─────────────────────────────────────────────────────────────
+group('exercise: wort-lesen', () => {
+  for (const minuteSet of ['halbe', 'viertel', 'fuenf']) {
+    test(`options for "${minuteSet}" include correct and are 4 unique`, () => {
+      const level = { mode: 'wort-lesen', minuteSet, hour24: false };
+      for (const m of MINUTE_SETS[minuteSet]) {
+        for (let h = 1; h <= 12; h++) {
+          const q = { h, m, dh: h, parsed: parseTime(h, m) };
+          const { options } = buildWordOptions(q, level);
+          eq(options.length, 4, `h=${h} m=${m}`);
+          eq(new Set(options).size, 4, `unique h=${h} m=${m}`);
+          contains(options, wordFromQ(q), `correct included h=${h} m=${m}`);
+        }
+      }
+    });
+  }
+  test('halb distractor includes both "halb h" and "halb h+2" confusions', () => {
+    // 3:30 correct = "halb vier"; expected distractors "halb drei" (current-hour) and "halb fünf" (over-shoot)
+    const q = { h: 3, m: 30, dh: 3, parsed: parseTime(3, 30) };
+    const { options } = buildWordOptions(q, { mode: 'wort-lesen', minuteSet: 'halbe', hour24: false });
+    contains(options, 'halb vier');
+    contains(options, 'halb drei');
+    contains(options, 'halb fünf');
+  });
+  test('Viertel distractor flips nach↔vor on adjacent hour', () => {
+    // 3:15 correct = "Viertel nach drei"; distractor should include "Viertel vor vier"
+    const q = { h: 3, m: 15, dh: 3, parsed: parseTime(3, 15) };
+    const { options } = buildWordOptions(q, { mode: 'wort-lesen', minuteSet: 'viertel', hour24: false });
+    contains(options, 'Viertel nach drei');
+    contains(options, 'Viertel vor vier');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// EXERCISE TYPE: STELLEN / WORT-STELLEN (digital/phrase → clock)
+// These modes don't use option builders; checking is a direct
+// (setH === q.h) && (setM === q.m) comparison after snapping.
+// We test the snap round-trip for every (h, m).
+// ─────────────────────────────────────────────────────────────
+group('exercise: stellen / wort-stellen snap round-trip', () => {
+  test('snapHour(h * 30°) returns h (1..12)', () => {
+    for (let h = 1; h <= 12; h++) eq(snapHour(h * 30), h === 12 ? 12 : h);
+  });
+  test('snap5deg(m * 6°) returns m for m ∈ {0,5,…,55}', () => {
+    for (const m of MINUTE_SETS.fuenf) eq(snap5deg(m * 6), m, `m=${m}`);
+  });
+  test('small drift snaps to the nearest 5-minute mark', () => {
+    // +2° off the mark (well within the 3° half-window for a 5-min step)
+    eq(snap5deg(15 * 6 + 2), 15);
+    eq(snap5deg(30 * 6 - 2), 30);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// TRANSITIONS BETWEEN EXERCISE TYPES
+// ─────────────────────────────────────────────────────────────
+group('transitions between exercises', () => {
+  test('LEVELS covers all four modes', () => {
+    const modes = new Set(LEVELS.map(l => l.mode));
+    eq(modes.has('lesen'), true);
+    eq(modes.has('stellen'), true);
+    eq(modes.has('wort-lesen'), true);
+    eq(modes.has('wort-stellen'), true);
+  });
+  test('LEVELS ids are sequential and unique', () => {
+    LEVELS.forEach((l, i) => eq(l.id, i, `id at ${i}`));
+  });
+  test('makeQuestion produces an h,m,parsed matching the level minuteSet', () => {
+    for (const level of LEVELS) {
+      const q = makeQuestion(level);
+      ok(q.h >= 1 && q.h <= 12, `h in range (${level.title})`);
+      ok(MINUTE_SETS[level.minuteSet].includes(q.m), `m in minuteSet (${level.title})`);
+      eq(q.parsed.fullWord, parseTime(q.h, q.m).fullWord, `parsed consistent (${level.title})`);
+      if (level.hour24) ok(q.dh >= 0 && q.dh <= 23, `24h dh in range (${level.title})`);
+    }
+  });
+  test('switching levels picks a different mode', () => {
+    // level 0 is lesen/volle, level 3 is wort-lesen/halbe
+    eq(LEVELS[0].mode, 'lesen');
+    eq(LEVELS[3].mode, 'wort-lesen');
+    eq(LEVELS[4].mode, 'wort-stellen');
+    eq(LEVELS[1].mode, 'stellen');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// LOCAL STORAGE — persistence of level choice and mastery
+// ─────────────────────────────────────────────────────────────
+group('localStorage persistence', () => {
+  test('saveMastery / loadMastery round-trip', () => {
+    resetMastery();
+    eq(loadMastery(), {});
+    const m = recordMastery({}, 5, 10);
+    saveMastery(m);
+    eq(loadMastery(), m);
+  });
+  test('resetMastery clears both MASTERY_KEY and LEVEL_KEY', () => {
+    localStorage.setItem(MASTERY_KEY, JSON.stringify({ 0: { tier: 1, best: 8, last: 8 } }));
+    localStorage.setItem(LEVEL_KEY, '7');
+    resetMastery();
+    eq(localStorage.getItem(MASTERY_KEY), null);
+    eq(localStorage.getItem(LEVEL_KEY), null);
+  });
+  test('level choice persists through load cycle', () => {
+    resetMastery();
+    localStorage.setItem(LEVEL_KEY, '4');
+    eq(parseInt(localStorage.getItem(LEVEL_KEY) || '0', 10), 4);
+    resetMastery();
+    eq(parseInt(localStorage.getItem(LEVEL_KEY) || '0', 10), 0);
+  });
+  test('mastery keyed by levelId is independent per level', () => {
+    let m = {};
+    m = recordMastery(m, 0, 10);
+    m = recordMastery(m, 5, 8);
+    eq(m[0].tier, 3);
+    eq(m[5].tier, 1);
+    ok(m[1] === undefined, 'level 1 untouched');
+  });
+});
+
+// clean up after tests (do not leave test state in storage)
+window.addEventListener('load', () => {
+  const { pass, fail } = run();
+  try { resetMastery(); } catch {}
+  document.title = `${pass} ✓ / ${fail} ✗ — Uhrzeit Tests`;
+});
+</script>
+</body>
+</html>

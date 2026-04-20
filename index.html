@@ -1,0 +1,833 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#fde884">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Uhrzeit">
+<title>Uhrzeit Lernen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:ital,wght@0,400;0,600;0,700;1,400;1,600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root { color-scheme: light; }
+  html, body {
+    margin: 0; padding: 0;
+    background:
+      radial-gradient(ellipse 80% 30% at 50% 0%, #fffbe0 0%, transparent 60%),
+      linear-gradient(180deg, #fef3b8 0%, #fde884 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
+    min-height: 100dvh;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+  }
+  body { font-family: Nunito, sans-serif; color: #2a2418; }
+  button { font-family: inherit; cursor: pointer; }
+  @keyframes clockPop {
+    0% { transform: scale(0) rotate(-20deg); }
+    60% { transform: scale(1.1) rotate(10deg); }
+    100% { transform: scale(1) rotate(0deg); }
+  }
+  .app-shell {
+    max-width: 460px;
+    margin: 0 auto;
+    padding:
+      calc(14px + env(safe-area-inset-top))
+      max(18px, env(safe-area-inset-right))
+      calc(24px + env(safe-area-inset-bottom))
+      max(18px, env(safe-area-inset-left));
+    position: relative;
+    min-height: 100vh;
+    min-height: 100dvh;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+  .sun {
+    position: absolute;
+    top: -60px; right: -50px;
+    width: 160px; height: 160px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #fff, #fcc419 55%, #f59f00 100%);
+    opacity: 0.55;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+<script src="engine.js"></script>
+
+<script type="text/babel" data-presets="react">
+// ============================================================
+// MASTERY HOOK — wraps engine.js mastery helpers with React state
+// ============================================================
+function useMastery() {
+  const [m, setM] = React.useState(() => loadMastery());
+  const record = (levelId, correct) => {
+    setM(prev => {
+      const next = recordMastery(prev, levelId, correct);
+      saveMastery(next);
+      return next;
+    });
+  };
+  const reset = () => { resetMastery(); setM({}); };
+  return { mastery: m, record, reset };
+}
+
+// ============================================================
+// GAME HOOK — question lifecycle, round state, scoring
+// ============================================================
+function useClockGame({ levelId = 0, roundN = 10, onMilestone, onRoundDone } = {}) {
+  const [, setTick] = React.useState(0);
+  const refresh = () => setTick(t => t + 1);
+  const level = LEVELS[levelId];
+
+  const ref = React.useRef(null);
+  if (!ref.current) ref.current = {
+    question: null, selected: null, options: [],
+    setH: 12, setM: 0, activeHand: "minute",
+    locked: false, wasCorrect: false, feedback: null, feedbackKind: null,
+    score: 0, streak: 0, round: [], qIndex: 0, complete: false, lastMilestone: 0,
+    levelId, roundN,
+  };
+  const S = ref.current;
+  S.levelId = levelId; S.roundN = roundN; S.level = level;
+
+  const isWord = (level.mode === "wort-lesen" || level.mode === "wort-stellen");
+  const isSet  = (level.mode === "stellen" || level.mode === "wort-stellen");
+
+  const newQuestion = () => {
+    S.question = makeQuestion(level);
+    S.selected = null; S.locked = false;
+    S.feedback = null; S.feedbackKind = null;
+    if (isSet) { S.setH = 12; S.setM = 0; S.activeHand = "minute"; }
+    if (level.mode === "lesen")      Object.assign(S, buildDigitalOptions(S.question, level));
+    if (level.mode === "wort-lesen") Object.assign(S, buildWordOptions(S.question, level));
+    refresh();
+  };
+
+  const startRound = () => {
+    S.round = []; S.qIndex = 0; S.complete = false; S.lastMilestone = 0;
+    newQuestion();
+  };
+
+  React.useEffect(() => { startRound(); }, []);
+  const firstRun = React.useRef(true);
+  React.useEffect(() => {
+    if (firstRun.current) { firstRun.current = false; return; }
+    startRound();
+  }, [levelId]);
+
+  const finishQuestion = (ok) => {
+    S.locked = true; S.wasCorrect = ok;
+    if (ok) {
+      S.streak += 1;
+      S.score += 10 + Math.min(10, S.streak);
+      S.feedback = pickRandom(["Genau.","Richtig.","Perfekt.","Sehr schön.","Stimmt."]);
+      S.feedbackKind = "correct";
+    } else {
+      S.streak = 0;
+      S.feedback = isWord
+        ? `Richtig: ${wordFromQ(S.question)}.`
+        : `Richtig: ${digitalFromQ(S.question)}.`;
+      S.feedbackKind = "wrong";
+      if (isSet) { S.setH = S.question.h; S.setM = S.question.m; }
+    }
+    S.round.push(ok);
+    if (ok && (S.streak === 5 || S.streak === 10) && S.streak !== S.lastMilestone) {
+      S.lastMilestone = S.streak;
+      onMilestone && onMilestone(S.streak);
+    }
+    refresh();
+    if (ok) setTimeout(() => { if (S.locked && !S.complete) next(); }, 1300);
+  };
+
+  const next = () => {
+    if (S.round.length >= S.roundN) {
+      S.complete = true;
+      const correctCount = S.round.filter(Boolean).length;
+      onRoundDone && onRoundDone(levelId, correctCount);
+      refresh();
+      return;
+    }
+    S.qIndex += 1;
+    newQuestion();
+  };
+
+  const pickOption = (val) => {
+    if (S.locked) return;
+    S.selected = val;
+    refresh();
+    const correct = level.mode === "wort-lesen" ? wordFromQ(S.question) : digitalFromQ(S.question);
+    finishQuestion(val === correct);
+  };
+
+  const check = () => {
+    if (S.locked) return;
+    const { h, m } = S.question;
+    finishQuestion((S.setM === m) && (S.setH === h));
+  };
+
+  const setHandAngle = (ang, which, live = false) => {
+    if (S.locked) return;
+    if (live) return;
+    if (which === "minute") S.setM = snap5deg(ang);
+    else S.setH = snapHour(ang);
+    refresh();
+  };
+  const setActiveHand = (h) => { S.activeHand = h; refresh(); };
+
+  return {
+    state: S,
+    actions: { pickOption, check, next, setHandAngle, setActiveHand, startRound },
+  };
+}
+
+// ============================================================
+// CLOCK — analog face, interactive in stellen modes
+// ============================================================
+function Clock({
+  theme = {},
+  size = 240,
+  showNumerals = true,
+  showMinorTicks = true,
+  h = 12, m = 0,
+  interactive = false,
+  activeHand = "minute",
+  onSetAngle,
+  onPickHand,
+  numeralFont = 'Fredoka, system-ui',
+  numeralWeight = 500,
+  numeralSize,
+  tickThickness = 2,
+  minorThickness = 1,
+  minorLen = 4,
+  majorLen = 8,
+}) {
+  const faceRef = React.useRef(null);
+  const [drag, setDrag] = React.useState(null);
+  const R = size / 2;
+  const hourAng = ((h % 12) * 30) + (m * 0.5);
+  const minAng = (m / 60) * 360;
+
+  const getAng = (e) => {
+    const rect = faceRef.current.getBoundingClientRect();
+    const cx = rect.left + rect.width/2;
+    const cy = rect.top + rect.height/2;
+    const p = (e.touches && e.touches[0]) ? e.touches[0] : e;
+    const dx = p.clientX - cx, dy = p.clientY - cy;
+    let ang = Math.atan2(dy, dx) * 180/Math.PI + 90;
+    if (ang < 0) ang += 360;
+    return ang;
+  };
+
+  React.useEffect(() => {
+    if (!drag) return;
+    const move = (e) => {
+      e.preventDefault();
+      const ang = getAng(e);
+      onSetAngle && onSetAngle(ang, drag, true);
+      const el = document.querySelector(`[data-clock-hand="${drag}"][data-clock-id="${faceRef.current.dataset.clockId}"]`);
+      if (el) el.style.transform = `rotate(${ang}deg)`;
+    };
+    const up = () => {
+      const el = document.querySelector(`[data-clock-hand="${drag}"][data-clock-id="${faceRef.current.dataset.clockId}"]`);
+      const finalAng = el ? (parseFloat(el.style.transform.replace(/[^\d.-]/g,'')) || 0) : 0;
+      onSetAngle && onSetAngle(finalAng, drag, false);
+      setDrag(null);
+    };
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', up);
+    document.addEventListener('touchmove', move, { passive: false });
+    document.addEventListener('touchend', up);
+    return () => {
+      document.removeEventListener('mousemove', move);
+      document.removeEventListener('mouseup', up);
+      document.removeEventListener('touchmove', move);
+      document.removeEventListener('touchend', up);
+    };
+  }, [drag]);
+
+  // If the pointer is angularly close to both hands, split by radius:
+  // outer 55% → minute hand; inner → hour hand.
+  const pickHandAt = (e) => {
+    const rect = faceRef.current.getBoundingClientRect();
+    const cx = rect.left + rect.width/2;
+    const cy = rect.top + rect.height/2;
+    const p = (e.touches && e.touches[0]) ? e.touches[0] : e;
+    const dx = p.clientX - cx, dy = p.clientY - cy;
+    const r = Math.sqrt(dx*dx + dy*dy);
+    let ang = Math.atan2(dy, dx) * 180/Math.PI + 90;
+    if (ang < 0) ang += 360;
+    const dAng = (a, b) => { let d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d; };
+    const dH = dAng(ang, hourAng);
+    const dM = dAng(ang, minAng);
+    const close = Math.abs(dH - dM) < 20 || (dH < 25 && dM < 25);
+    if (close) return r > R * 0.55 ? 'minute' : 'hour';
+    return dH < dM ? 'hour' : 'minute';
+  };
+
+  const onFaceClick = (e) => {
+    if (!interactive || drag) return;
+    if (e.target.closest('[data-nodrag]')) return;
+    const ang = getAng(e);
+    const which = pickHandAt(e);
+    onPickHand && onPickHand(which);
+    onSetAngle && onSetAngle(ang, which, false);
+  };
+
+  const onFaceDown = (e) => {
+    if (!interactive) return;
+    if (e.target.closest('[data-nodrag]')) return;
+    e.preventDefault();
+    const which = pickHandAt(e);
+    onPickHand && onPickHand(which);
+    setDrag(which);
+  };
+
+  const clockId = React.useMemo(() => 'c' + Math.random().toString(36).slice(2,8), []);
+  const numSize = numeralSize || Math.round(size * 0.075);
+  const numR = R - numSize * 1.15;
+  const numWhich = showNumerals === 'cardinals' ? [12,3,6,9] : (showNumerals ? [1,2,3,4,5,6,7,8,9,10,11,12] : []);
+  const numerals = numWhich.map(i => {
+    const ang = (i / 12) * 360;
+    const rad = (ang - 90) * Math.PI/180;
+    const x = R + numR * Math.cos(rad);
+    const y = R + numR * Math.sin(rad);
+    return (
+      <div key={i} style={{
+        position: 'absolute', left: x, top: y,
+        transform: 'translate(-50%,-50%)',
+        fontFamily: numeralFont, fontWeight: numeralWeight,
+        fontSize: numSize, color: theme.numeral || '#2a2418',
+        lineHeight: 1, pointerEvents: 'none',
+      }}>{i}</div>
+    );
+  });
+
+  const ticks = [];
+  for (let i = 0; i < 60; i++) {
+    const major = i % 5 === 0;
+    if (!major && !showMinorTicks) continue;
+    const rot = (i / 60) * 360;
+    const len = major ? majorLen : minorLen;
+    const thick = major ? tickThickness : minorThickness;
+    ticks.push(
+      <div key={i} data-nodrag style={{
+        position: 'absolute', left: '50%', top: 0,
+        width: thick, height: len,
+        background: major ? (theme.tickColor || '#2a2418') : (theme.tickMinor || 'rgba(0,0,0,0.3)'),
+        transformOrigin: `${thick/2}px ${R}px`,
+        transform: `translateX(-50%) rotate(${rot}deg)`,
+        borderRadius: 1, pointerEvents: 'none',
+      }} />
+    );
+  }
+
+  const hourLen = Math.round(size * 0.26);
+  const minLen  = Math.round(size * 0.39);
+  const hourBase = {
+    position: 'absolute', left: '50%', top: '50%',
+    transformOrigin: '50% 100%',
+    transform: `rotate(${hourAng}deg)`,
+    transition: drag === 'hour' ? 'none' : 'transform .55s cubic-bezier(.34,1.56,.64,1)',
+    background: theme.hourHand || '#2a2418',
+    pointerEvents: 'none',
+  };
+  const minBase = {
+    position: 'absolute', left: '50%', top: '50%',
+    transformOrigin: '50% 100%',
+    transform: `rotate(${minAng}deg)`,
+    transition: drag === 'minute' ? 'none' : 'transform .55s cubic-bezier(.34,1.56,.64,1)',
+    background: theme.minHand || '#e8590c',
+    pointerEvents: 'none',
+  };
+
+  return (
+    <div
+      ref={faceRef}
+      data-clock-id={clockId}
+      onClick={onFaceClick}
+      onMouseDown={onFaceDown}
+      onTouchStart={onFaceDown}
+      style={{
+        width: size, height: size, position: 'relative',
+        touchAction: 'none', userSelect: 'none',
+        cursor: interactive ? 'grab' : 'default',
+      }}
+    >
+      <div style={{
+        position: 'absolute', inset: 0, borderRadius: '50%',
+        background: theme.face || '#fffef5',
+        border: theme.border || '1.5px solid #2a2418',
+      }} />
+      {ticks}
+      {numerals}
+      <div data-clock-id={clockId} data-clock-hand="hour" style={{
+        ...hourBase, width: 6, height: hourLen, marginLeft: -3, marginTop: -hourLen, borderRadius: 3,
+      }} />
+      <div data-clock-id={clockId} data-clock-hand="minute" style={{
+        ...minBase, width: 4, height: minLen, marginLeft: -2, marginTop: -minLen, borderRadius: 2,
+      }} />
+      <div style={{
+        position: 'absolute', left: '50%', top: '50%',
+        width: 10, height: 10, margin: '-5px 0 0 -5px',
+        borderRadius: '50%', background: theme.pivot || '#2a2418',
+        border: `2px solid ${theme.face || '#fffef5'}`,
+        boxShadow: `0 0 0 1px ${theme.pivot || '#2a2418'}`,
+        zIndex: 3, pointerEvents: 'none',
+      }} />
+    </div>
+  );
+}
+
+// ============================================================
+// GROWTH ICONS — tier 0..3 (dot / sprout / bud / daffodil)
+// ============================================================
+function LevelIcon({ tier, active, accent, ink, fillProgress = 0 }) {
+  const size = active ? 28 : 22;
+  if (tier === 0) {
+    const shade = Math.max(0, Math.min(1, fillProgress));
+    const dotSize = Math.round(size * 0.55);
+    const bg = active ? accent : `rgba(232,89,12,${0.12 + shade * 0.55})`;
+    return <div style={{ width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{
+        width: dotSize, height: dotSize, borderRadius: '50%',
+        background: bg,
+        border: active ? `2px solid ${accent}` : `1px solid rgba(42,36,24,${0.2 + shade * 0.3})`,
+        boxShadow: active ? `0 2px 6px rgba(232,89,12,0.35)` : 'none',
+        transition: 'all .2s',
+      }} />
+    </div>;
+  }
+  if (tier === 1) {
+    return <svg width={size+4} height={size+4} viewBox="0 0 28 28">
+      <circle cx="14" cy="14" r="13" fill="#fff" stroke={active ? accent : 'rgba(42,36,24,0.28)'} strokeWidth={active?2.5:1.5}/>
+      <path d="M14 20 Q14 14 10 11 Q12 14 14 20 Q14 14 18 11 Q16 14 14 20" fill="#8bc34a" stroke="#558b2f" strokeWidth="0.8"/>
+      <line x1="14" y1="20" x2="14" y2="22" stroke="#558b2f" strokeWidth="1.5" strokeLinecap="round"/>
+    </svg>;
+  }
+  if (tier === 2) {
+    return <svg width={size+6} height={size+6} viewBox="0 0 28 28">
+      <circle cx="14" cy="14" r="13" fill="#fff8e1" stroke={active ? accent : 'rgba(42,36,24,0.28)'} strokeWidth={active?2.5:1.5}/>
+      <line x1="14" y1="22" x2="14" y2="14" stroke="#558b2f" strokeWidth="1.6" strokeLinecap="round"/>
+      <path d="M11 15 Q11 8 14 6 Q17 8 17 15 Q17 18 14 18 Q11 18 11 15 Z" fill="#fbc02d" stroke="#e65100" strokeWidth="0.8"/>
+      <path d="M16 19 Q19 18 20 15" fill="none" stroke="#558b2f" strokeWidth="1" strokeLinecap="round"/>
+    </svg>;
+  }
+  return <svg width={size+10} height={size+10} viewBox="0 0 32 32">
+    <circle cx="16" cy="16" r="15" fill="#fffde7" stroke={active ? accent : '#f9a825'} strokeWidth={active?2.5:1.5}/>
+    {[0,60,120,180,240,300].map(a => {
+      const rad = (a - 90) * Math.PI/180;
+      const cx = 16 + 7.5*Math.cos(rad), cy = 16 + 7.5*Math.sin(rad);
+      return <ellipse key={a} cx={cx} cy={cy} rx="4.2" ry="2.4" fill="#ffd54f" stroke="#f57f17" strokeWidth="0.7"
+        transform={`rotate(${a} ${cx} ${cy})`} />;
+    })}
+    <circle cx="16" cy="16" r="4.2" fill="#ff8f00" stroke="#bf360c" strokeWidth="0.8"/>
+    <circle cx="16" cy="16" r="2.2" fill="#ffb300"/>
+  </svg>;
+}
+
+// ============================================================
+// LEVEL TRACK
+// ============================================================
+function LevelTrack({ levelId, setLevelId, mastery, accent, ink, soft }) {
+  const trackRef = React.useRef(null);
+  const [drag, setDrag] = React.useState(false);
+
+  const handleAt = (clientX) => {
+    const r = trackRef.current.getBoundingClientRect();
+    const t = Math.max(0, Math.min(1, (clientX - r.left) / r.width));
+    setLevelId(Math.round(t * (LEVELS.length - 1)));
+  };
+  const onDown = (e) => {
+    e.preventDefault(); setDrag(true);
+    const p = e.touches ? e.touches[0] : e;
+    handleAt(p.clientX);
+  };
+  React.useEffect(() => {
+    if (!drag) return;
+    const move = (e) => { const p = e.touches ? e.touches[0] : e; handleAt(p.clientX); };
+    const up = () => setDrag(false);
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', up);
+    document.addEventListener('touchmove', move, { passive: false });
+    document.addEventListener('touchend', up);
+    return () => {
+      document.removeEventListener('mousemove', move);
+      document.removeEventListener('mouseup', up);
+      document.removeEventListener('touchmove', move);
+      document.removeEventListener('touchend', up);
+    };
+  }, [drag]);
+
+  const pct = (levelId / (LEVELS.length - 1)) * 100;
+  const current = LEVELS[levelId];
+  const curMastery = mastery[levelId];
+
+  return (
+    <div style={{ margin: '4px 0 14px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+        fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.18em',
+        textTransform: 'uppercase', color: soft, marginBottom: 6 }}>
+        <span>Level {String(levelId+1).padStart(2,'0')} / {LEVELS.length}</span>
+        <span>{curMastery ? `${curMastery.best}/10${curMastery.tier === 3 ? ' 🌼' : ''}` : '—'}</span>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, marginTop: 2 }}>
+        <div style={{ fontFamily: 'Fredoka, sans-serif', fontWeight: 600, fontSize: 16, color: ink, letterSpacing: '-0.01em' }}>
+          {current.title}
+        </div>
+        <div style={{ fontFamily: 'Nunito, sans-serif', fontStyle: 'italic', fontSize: 12, color: soft, textAlign: 'right' }}>
+          {current.sub}
+        </div>
+      </div>
+
+      <div ref={trackRef}
+        onMouseDown={onDown} onTouchStart={onDown}
+        style={{ position: 'relative', height: 44, cursor: 'pointer', touchAction: 'none', marginTop: 10 }}>
+        <div style={{ position: 'absolute', left: 14, right: 14, top: 20, height: 2,
+          background: 'rgba(42,36,24,0.18)', borderRadius: 1 }} />
+        <div style={{ position: 'absolute', left: 14,
+          width: `calc(${pct}% * (100% - 28px) / 100%)`, top: 20, height: 2,
+          background: accent, borderRadius: 1, transition: drag ? 'none' : 'width .25s' }} />
+        {LEVELS.map((lv, i) => {
+          const x = (i / (LEVELS.length - 1)) * 100;
+          const tier = mastery[i]?.tier ?? 0;
+          const active = i === levelId;
+          return (
+            <div key={i}
+              onClick={(e) => { e.stopPropagation(); setLevelId(i); }}
+              style={{ position: 'absolute', left: `calc(14px + ${x}% * (100% - 28px) / 100%)`,
+                top: 8, transform: 'translateX(-50%)',
+                cursor: 'pointer', zIndex: active ? 3 : 2,
+              }}>
+              <LevelIcon tier={tier} active={active} accent={accent} ink={ink}
+                fillProgress={(mastery[i]?.best ?? 0) / 7} />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// GAME BODY — mode-specific layout and interaction
+// ============================================================
+function Feedback({ c, S }) {
+  return <div style={{
+    fontFamily: 'Nunito, sans-serif', fontStyle: 'italic',
+    fontSize: 14, textAlign: 'center', minHeight: 20, margin: '10px 0 4px',
+    color: S.feedbackKind === 'correct' ? c.correct : S.feedbackKind === 'wrong' ? c.wrong : 'transparent',
+    fontWeight: 600,
+  }}>{S.feedback || '—'}</div>;
+}
+
+function NextBtn({ onClick, c, font, accent }) {
+  return <button onClick={onClick}
+    style={{ width: '100%', fontFamily: font, fontWeight: 600, fontSize: 16, minHeight: 50,
+      padding: '12px', borderRadius: 999, border: 0,
+      background: accent, color: c.paper, cursor: 'pointer', marginTop: 8 }}>
+    Weiter →
+  </button>;
+}
+
+function optionButtonStyle(state, c, font, shape) {
+  let bg = 'transparent', color = c.ink, border = `1.5px solid ${c.ink}`;
+  if (state === 'selected') { bg = c.ink; color = c.paper; }
+  else if (state === 'correct') { color = c.correct; border = `1.5px solid ${c.correct}`; }
+  else if (state === 'wrong')   { color = c.wrong; border = `1.5px solid ${c.wrong}`; }
+  else if (state === 'faded')   { color = c.soft; border = `1px solid rgba(0,0,0,0.1)`; }
+  return shape === 'pill' ? {
+    fontFamily: font, fontWeight: 500, fontSize: 22,
+    padding: '14px 10px', minHeight: 56, borderRadius: 999,
+    border, background: bg, color,
+    fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.01em',
+    transition: 'all .15s ease',
+  } : {
+    fontFamily: font, fontWeight: 500, fontSize: 17,
+    padding: '13px 16px', minHeight: 50, borderRadius: 14,
+    border, background: bg, color, textAlign: 'left',
+    letterSpacing: '-0.01em', transition: 'all .15s ease',
+  };
+}
+
+function Body({ S, actions, level, c, theme, font, labelFont, accent }) {
+  if (!S.question) return null;
+  const { h, m } = S.question;
+
+  if (level.mode === 'lesen') {
+    const correct = digitalFromQ(S.question);
+    const stOf = (v) => !S.locked ? (S.selected === v ? 'selected' : '')
+                        : v === correct ? 'correct' : v === S.selected ? 'wrong' : 'faded';
+    return (
+      <>
+        <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0 16px' }}>
+          <Clock theme={theme} size={230} h={h} m={m} numeralFont={font} numeralWeight={500} />
+        </div>
+        <div style={{ fontFamily: 'Nunito, sans-serif', fontStyle: 'italic',
+          fontSize: 14, color: c.soft, marginBottom: 12, textAlign: 'center' }}>
+          Wie spät ist es?{level.hour24 ? ' (24-Stunden)' : ''}
+        </div>
+        <div data-testid="options" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          {S.options.map(o =>
+            <button key={o} onClick={() => actions.pickOption(o)} style={optionButtonStyle(stOf(o), c, font, 'pill')}>{o}</button>
+          )}
+        </div>
+        <Feedback c={c} S={S} />
+        {S.locked && !S.wasCorrect && <NextBtn onClick={actions.next} c={c} font={font} accent={accent} />}
+      </>
+    );
+  }
+
+  if (level.mode === 'wort-lesen') {
+    const correctWord = wordFromQ(S.question);
+    const stOf = (v) => !S.locked ? (S.selected === v ? 'selected' : '')
+                        : v === correctWord ? 'correct' : v === S.selected ? 'wrong' : 'faded';
+    return (
+      <>
+        <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0 14px' }}>
+          <Clock theme={theme} size={210} h={h} m={m} numeralFont={font} numeralWeight={500} />
+        </div>
+        <div style={{ fontFamily: 'Nunito, sans-serif', fontStyle: 'italic',
+          fontSize: 14, color: c.soft, marginBottom: 10, textAlign: 'center' }}>
+          Welcher Satz passt?
+        </div>
+        <div data-testid="options" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 8 }}>
+          {S.options.map(o =>
+            <button key={o} onClick={() => actions.pickOption(o)} style={optionButtonStyle(stOf(o), c, font, 'row')}>{o}</button>
+          )}
+        </div>
+        <Feedback c={c} S={S} />
+        {S.locked && !S.wasCorrect && <NextBtn onClick={actions.next} c={c} font={font} accent={accent} />}
+      </>
+    );
+  }
+
+  // stellen / wort-stellen
+  const isWord = level.mode === 'wort-stellen';
+  return (
+    <>
+      <div style={{ padding: isWord ? '10px 0 14px' : '12px 0 12px', textAlign: 'center' }}>
+        <div style={{ fontFamily: labelFont + ', monospace', fontSize: 10, letterSpacing: '0.22em',
+          textTransform: 'uppercase', color: c.soft, marginBottom: 6 }}>
+          Stelle die Uhr auf{!isWord && level.hour24 ? ' (24h)' : ''}
+        </div>
+        {isWord ? (
+          <div style={{ fontFamily: font, fontWeight: 600, fontSize: 28,
+            color: accent, letterSpacing: '-0.015em', lineHeight: 1.15, padding: '0 6px' }}>
+            {wordFromQ(S.question)}
+          </div>
+        ) : (
+          <div style={{ fontFamily: font, fontWeight: 600, fontSize: 64,
+            color: accent, letterSpacing: '-0.03em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+            {digitalFromQ(S.question)}
+          </div>
+        )}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'center', margin: '4px 0 10px' }}>
+        <Clock theme={theme} size={220} h={S.setH} m={S.setM}
+          interactive={!S.locked} activeHand={S.activeHand}
+          onSetAngle={actions.setHandAngle} onPickHand={actions.setActiveHand}
+          numeralFont={font} numeralWeight={500} />
+      </div>
+      <Feedback c={c} S={S} />
+      {S.locked ? (!S.wasCorrect && <NextBtn onClick={actions.next} c={c} font={font} accent={accent} />) :
+        <button onClick={actions.check}
+          style={{ width: '100%', fontFamily: font, fontWeight: 600, fontSize: 17, minHeight: 52,
+            padding: '12px', borderRadius: 999, border: 0,
+            background: accent, color: c.paper, cursor: 'pointer', marginTop: 8,
+            letterSpacing: '-0.01em' }}>
+          Prüfen
+        </button>}
+    </>
+  );
+}
+
+function RoundComplete({ c, accent, font, correct, tier, onAgain, onNext, hasNext }) {
+  const msg = tier === 3 ? 'Perfekt! Eine Narzisse für dich.' :
+              tier === 2 ? 'Fast perfekt — eine Knospe!' :
+              tier === 1 ? 'Gut gemacht, ein erster Spross.' :
+              'Versuch es noch einmal.';
+  return <div style={{ textAlign: 'center', padding: '30px 0 16px' }}>
+    <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10,
+      letterSpacing: '0.22em', textTransform: 'uppercase', color: c.soft }}>
+      Runde abgeschlossen
+    </div>
+    <div style={{ fontFamily: font, fontWeight: 700, fontSize: 56, color: accent,
+      marginTop: 4, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+      {correct}<span style={{ color: c.soft, fontWeight: 500 }}>/10</span>
+    </div>
+    <div style={{ margin: '10px auto 4px', width: 80, height: 80 }}>
+      <LevelIcon tier={tier} active accent={accent} ink={c.ink} />
+    </div>
+    <div style={{ fontFamily: 'Nunito, sans-serif', fontStyle: 'italic', marginTop: 8, color: c.ink }}>
+      {msg}
+    </div>
+    <div style={{ display: 'flex', gap: 8, marginTop: 20, justifyContent: 'center' }}>
+      <button onClick={onAgain}
+        style={{ fontFamily: font, fontWeight: 600, fontSize: 15,
+          padding: '11px 22px', borderRadius: 999, border: `1.5px solid ${c.ink}`,
+          background: 'transparent', color: c.ink, cursor: 'pointer' }}>Nochmal</button>
+      {hasNext && <button onClick={onNext}
+        style={{ fontFamily: font, fontWeight: 600, fontSize: 15,
+          padding: '11px 22px', borderRadius: 999, border: 0,
+          background: accent, color: c.paper, cursor: 'pointer' }}>Weiter →</button>}
+    </div>
+  </div>;
+}
+
+function Celebrate({ streak, c, accent }) {
+  return <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center',
+    justifyContent: 'center', zIndex: 50, pointerEvents: 'none' }}>
+    <div style={{ position: 'absolute', inset: 0,
+      background: `radial-gradient(circle at 50% 50%, ${c.accentSoft} 0%, transparent 65%)` }} />
+    <svg viewBox="0 0 200 200" width={160} height={160}
+      style={{ animation: 'clockPop 1.6s cubic-bezier(.34,1.56,.64,1)', position: 'relative' }}>
+      <g stroke={accent} strokeWidth="5" strokeLinecap="round">
+        {[0,45,90,135,180,225,270,315].map(a => {
+          const rad = (a - 90) * Math.PI/180;
+          const x1 = 100 + 78*Math.cos(rad), y1 = 100 + 78*Math.sin(rad);
+          const x2 = 100 + 92*Math.cos(rad), y2 = 100 + 92*Math.sin(rad);
+          return <line key={a} x1={x1} y1={y1} x2={x2} y2={y2} />;
+        })}
+      </g>
+      <circle cx="100" cy="100" r="48" fill="#fcc419" stroke={accent} strokeWidth="4"/>
+      <path d="M80 102 Q100 122 120 102" fill="none" stroke={c.ink} strokeWidth="4" strokeLinecap="round"/>
+      <circle cx="86" cy="92" r="4" fill={c.ink}/><circle cx="114" cy="92" r="4" fill={c.ink}/>
+    </svg>
+    <div style={{ position: 'absolute', bottom: '32%', fontFamily: 'Fredoka, sans-serif',
+      fontWeight: 700, fontSize: 24, color: accent }}>
+      {streak === 10 ? 'Zehn am Stück!' : 'Fünf am Stück!'}
+    </div>
+  </div>;
+}
+
+// ============================================================
+// RESET BUTTON — bottom of screen, clear + confirms
+// ============================================================
+function ResetButton({ onReset, c, soft }) {
+  const [armed, setArmed] = React.useState(false);
+  React.useEffect(() => {
+    if (!armed) return;
+    const t = setTimeout(() => setArmed(false), 4000);
+    return () => clearTimeout(t);
+  }, [armed]);
+
+  const base = {
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+    width: '100%', marginTop: 24, padding: '12px 18px',
+    fontFamily: 'Fredoka, sans-serif', fontSize: 14, fontWeight: 500,
+    borderRadius: 12, cursor: 'pointer', transition: 'all .15s ease',
+  };
+  if (!armed) {
+    return <button onClick={() => setArmed(true)}
+      style={{ ...base, background: 'transparent', color: soft,
+        border: `1.5px solid rgba(42,36,24,0.18)` }}>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 12a9 9 0 1 0 3-6.7"/><polyline points="3 4 3 10 9 10"/>
+      </svg>
+      Fortschritt zurücksetzen
+    </button>;
+  }
+  return <button onClick={onReset}
+    style={{ ...base, background: c.wrong, color: '#fff',
+      border: `1.5px solid ${c.wrong}` }}>
+    Wirklich löschen? Tippe zur Bestätigung.
+  </button>;
+}
+
+// ============================================================
+// MAIN APP
+// ============================================================
+function UhrzeitApp() {
+  const { mastery, record, reset } = useMastery();
+  const [levelId, setLevelId] = React.useState(() => {
+    try { return parseInt(localStorage.getItem(LEVEL_KEY) || '0', 10) || 0; }
+    catch { return 0; }
+  });
+  const [celeb, setCeleb] = React.useState(null);
+
+  React.useEffect(() => {
+    try { localStorage.setItem(LEVEL_KEY, String(levelId)); } catch {}
+  }, [levelId]);
+
+  const onMilestone = (s) => { setCeleb(s); setTimeout(() => setCeleb(null), 1600); };
+  const onRoundDone = (lv, correct) => record(lv, correct);
+
+  const game = useClockGame({ levelId, onMilestone, onRoundDone });
+  const S = game.state;
+  const level = LEVELS[levelId];
+
+  const c = {
+    paper: '#fffef5', ink: '#2a2418', soft: '#8c826a',
+    correct: '#5c940d', wrong: '#c92a2a',
+    accentSoft: 'rgba(232,89,12,0.22)',
+  };
+  const accent = '#e8590c';
+  const theme = {
+    face: 'rgba(255,253,235,0.8)', border: `1.5px solid ${c.ink}`,
+    numeral: c.ink, hourHand: c.ink, minHand: accent,
+    tickColor: c.ink, tickMinor: 'rgba(42,36,24,0.4)', pivot: c.ink,
+  };
+
+  const handleReset = () => { reset(); setLevelId(0); game.actions.startRound(); };
+
+  const roundCorrect = S.round.filter(Boolean).length;
+  const roundTier = masteryTier(roundCorrect);
+
+  return (
+    <div className="app-shell">
+      <div className="sun" />
+      <div style={{ position: 'relative' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+          fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.2em',
+          textTransform: 'uppercase', color: c.soft }}>
+          <span>№ {String(S.qIndex+1).padStart(2,'0')} / {String(S.roundN).padStart(2,'0')}</span>
+          <span>{S.score} Pkt · <span style={{ color: accent }}>{S.streak}↑</span></span>
+        </div>
+        <div style={{ fontFamily: 'Fredoka, sans-serif', fontWeight: 600, fontSize: 30,
+          lineHeight: 1, color: c.ink, letterSpacing: '-0.02em', marginTop: 4 }}>
+          Die Uhrzeit
+        </div>
+
+        <div style={{ display: 'flex', gap: 3, marginTop: 10 }}>
+          {Array.from({length: S.roundN}, (_,i) => {
+            const bg = i < S.round.length ? (S.round[i] ? c.correct : c.wrong) :
+                       i === S.qIndex ? accent : 'rgba(0,0,0,0.12)';
+            return <div key={i} style={{ flex: 1, height: 3, background: bg, borderRadius: 2 }} />;
+          })}
+        </div>
+
+        <div style={{ marginTop: 16 }}>
+          <LevelTrack levelId={levelId} setLevelId={setLevelId} mastery={mastery}
+            accent={accent} ink={c.ink} soft={c.soft} />
+        </div>
+
+        {S.complete ?
+          <RoundComplete c={c} accent={accent} font="Fredoka, sans-serif"
+            correct={roundCorrect} tier={roundTier}
+            onAgain={game.actions.startRound}
+            onNext={() => setLevelId(Math.min(LEVELS.length - 1, levelId + 1))}
+            hasNext={levelId < LEVELS.length - 1} /> :
+          <Body S={S} actions={game.actions} level={level} c={c} theme={theme}
+            accent={accent} font="Fredoka, sans-serif" labelFont="JetBrains Mono" />}
+
+        <ResetButton onReset={handleReset} c={c} soft={c.soft} />
+      </div>
+      {celeb && <Celebrate streak={celeb} c={c} accent={accent} />}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<UhrzeitApp />);
+</script>
+</body>
+</html>
