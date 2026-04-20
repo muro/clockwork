@@ -104,6 +104,7 @@ function useClockGame({ levelId = 0, roundN = 10, onMilestone, onRoundDone } = {
   const isSet  = (level.mode === "stellen" || level.mode === "wort-stellen");
 
   const newQuestion = () => {
+    clearTimeout(S.autoSubmitTimer); S.autoSubmitTimer = null;
     S.question = makeQuestion(level);
     S.selected = null; S.locked = false;
     S.feedback = null; S.feedbackKind = null;
@@ -146,7 +147,9 @@ function useClockGame({ levelId = 0, roundN = 10, onMilestone, onRoundDone } = {
       onMilestone && onMilestone(S.streak);
     }
     refresh();
-    if (ok) setTimeout(() => { if (S.locked && !S.complete) next(); }, 1300);
+    // Auto-advance after either outcome; wrong answers get a touch longer so
+    // the learner has a moment to read the correct answer.
+    setTimeout(() => { if (S.locked && !S.complete) next(); }, ok ? 1300 : 1800);
   };
 
   const next = () => {
@@ -175,9 +178,22 @@ function useClockGame({ levelId = 0, roundN = 10, onMilestone, onRoundDone } = {
     finishQuestion((S.setM === m) && (S.setH === h));
   };
 
+  const AUTO_SUBMIT_MS = 1200;
+  const scheduleAutoSubmit = () => {
+    clearTimeout(S.autoSubmitTimer);
+    S.autoSubmitTimer = setTimeout(() => {
+      if (S.locked || S.complete || !S.question) return;
+      const { h, m } = S.question;
+      finishQuestion((S.setM === m) && (S.setH === h));
+    }, AUTO_SUBMIT_MS);
+  };
+  const cancelAutoSubmit = () => { clearTimeout(S.autoSubmitTimer); S.autoSubmitTimer = null; };
+
   const setHandAngle = (ang, which, live = false, hourBaseDeg) => {
     if (S.locked) return;
-    if (live) return;
+    // Any live drag frame means the user is still working — hold the
+    // auto-submit timer off until both hands have been still for the delay.
+    if (live) { cancelAutoSubmit(); return; }
     if (which === "minute") {
       // Snap to the visual grid for the level — 12/3/6/9 for full/half/quarter
       // modes, every 5 min for fuenf. This is independent of the question's
@@ -195,8 +211,14 @@ function useClockGame({ levelId = 0, roundN = 10, onMilestone, onRoundDone } = {
       S.setH = snapHour(ang);
     }
     refresh();
+    // Stellen modes auto-submit once the hands stop moving.
+    if (isSet) scheduleAutoSubmit();
   };
-  const setActiveHand = (h) => { S.activeHand = h; refresh(); };
+  // Picking up a hand counts as "still working" — cancel any pending submit.
+  const setActiveHand = (h) => { cancelAutoSubmit(); S.activeHand = h; refresh(); };
+
+  // Clean up any pending auto-submit on unmount / level change / new question.
+  React.useEffect(() => () => cancelAutoSubmit(), []);
 
   return {
     state: S,
@@ -473,9 +495,11 @@ function LevelIcon({ tier, active, accent, ink, fillProgress = 0 }) {
     </div>;
   }
   if (tier === 1) {
-    // No outlined circle — sprout sits directly on the page. Active state just
-    // thickens the stem/leaves slightly so it reads as selected.
+    // A page-tinted disc behind the sprout masks the track line from
+    // "striking through" the icon. Keep it subtle so the icon still reads as
+    // a growing sprout rather than another bubble.
     return <svg width={size} height={size} viewBox="0 0 28 28" style={{ display: 'block' }}>
+      <circle cx="14" cy="14" r="10" fill="#fef3b8" stroke="none"/>
       {active && <circle cx="14" cy="14" r="13" fill="none" stroke={accent} strokeWidth="2"/>}
       <path d="M14 20 Q14 14 10 11 Q12 14 14 20 Q14 14 18 11 Q16 14 14 20" fill="#8bc34a" stroke="#558b2f" strokeWidth="0.8"/>
       <line x1="14" y1="20" x2="14" y2="22" stroke="#558b2f" strokeWidth="1.5" strokeLinecap="round"/>
@@ -649,7 +673,7 @@ function Body({ S, actions, level, c, theme, font, labelFont, accent }) {
           )}
         </div>
         <Feedback c={c} S={S} />
-        {S.locked && !S.wasCorrect && <NextBtn onClick={actions.next} c={c} font={font} accent={accent} />}
+        {/* Auto-advance handles this; no manual "Weiter" needed. */}
       </>
     );
   }
@@ -673,7 +697,7 @@ function Body({ S, actions, level, c, theme, font, labelFont, accent }) {
           )}
         </div>
         <Feedback c={c} S={S} />
-        {S.locked && !S.wasCorrect && <NextBtn onClick={actions.next} c={c} font={font} accent={accent} />}
+        {/* Auto-advance handles this; no manual "Weiter" needed. */}
       </>
     );
   }
@@ -706,14 +730,7 @@ function Body({ S, actions, level, c, theme, font, labelFont, accent }) {
           numeralFont={font} numeralWeight={500} />
       </div>
       <Feedback c={c} S={S} />
-      {S.locked ? (!S.wasCorrect && <NextBtn onClick={actions.next} c={c} font={font} accent={accent} />) :
-        <button onClick={actions.check}
-          style={{ width: '100%', fontFamily: font, fontWeight: 600, fontSize: 17, minHeight: 52,
-            padding: '12px', borderRadius: 999, border: 0,
-            background: accent, color: c.paper, cursor: 'pointer', marginTop: 8,
-            letterSpacing: '-0.01em' }}>
-          Prüfen
-        </button>}
+      {/* No Prüfen button — hands auto-submit after idle, advance auto-fires. */}
     </>
   );
 }
@@ -778,36 +795,34 @@ function Celebrate({ streak, c, accent }) {
 }
 
 // ============================================================
-// RESET BUTTON — bottom of screen, clear + confirms
+// RESET ICON — small top-right button, two-step confirm
 // ============================================================
-function ResetButton({ onReset, c, soft }) {
+function ResetIcon({ onReset, c, soft }) {
   const [armed, setArmed] = React.useState(false);
   React.useEffect(() => {
     if (!armed) return;
-    const t = setTimeout(() => setArmed(false), 4000);
+    const t = setTimeout(() => setArmed(false), 3000);
     return () => clearTimeout(t);
   }, [armed]);
-
-  const base = {
-    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-    width: '100%', marginTop: 24, padding: '12px 18px',
-    fontFamily: 'Fredoka, sans-serif', fontSize: 14, fontWeight: 500,
-    borderRadius: 12, cursor: 'pointer', transition: 'all .15s ease',
+  const handleClick = (e) => {
+    e.stopPropagation();
+    if (armed) { onReset(); setArmed(false); } else setArmed(true);
   };
-  if (!armed) {
-    return <button onClick={() => setArmed(true)}
-      style={{ ...base, background: 'transparent', color: soft,
-        border: `1.5px solid rgba(42,36,24,0.18)` }}>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M3 12a9 9 0 1 0 3-6.7"/><polyline points="3 4 3 10 9 10"/>
-      </svg>
-      Fortschritt zurücksetzen
-    </button>;
-  }
-  return <button onClick={onReset}
-    style={{ ...base, background: c.wrong, color: '#fff',
-      border: `1.5px solid ${c.wrong}` }}>
-    Wirklich löschen? Tippe zur Bestätigung.
+  return <button onClick={handleClick}
+    aria-label={armed ? 'Tippe zur Bestätigung' : 'Fortschritt zurücksetzen'}
+    title={armed ? 'Tippe zur Bestätigung' : 'Fortschritt zurücksetzen'}
+    style={{
+      width: 26, height: 26, padding: 0, flexShrink: 0,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: armed ? c.wrong : 'transparent',
+      color: armed ? '#fff' : soft,
+      border: `1.5px solid ${armed ? c.wrong : 'rgba(42,36,24,0.18)'}`,
+      borderRadius: '50%', cursor: 'pointer',
+      transition: 'background .15s, color .15s, border-color .15s',
+    }}>
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 12a9 9 0 1 0 3-6.7"/><polyline points="3 4 3 10 9 10"/>
+    </svg>
   </button>;
 }
 
@@ -854,11 +869,14 @@ function UhrzeitApp() {
     <div className="app-shell">
       <div className="sun" />
       <div style={{ position: 'relative' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10,
           fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.2em',
           textTransform: 'uppercase', color: c.soft }}>
           <span>№ {String(S.qIndex+1).padStart(2,'0')} / {String(S.roundN).padStart(2,'0')}</span>
-          <span>{S.score} Pkt · <span style={{ color: accent }}>{S.streak}↑</span></span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span>{S.score} Pkt · <span style={{ color: accent }}>{S.streak}↑</span></span>
+            <ResetIcon onReset={handleReset} c={c} soft={c.soft} />
+          </div>
         </div>
         <div style={{ fontFamily: 'Fredoka, sans-serif', fontWeight: 600, fontSize: 30,
           lineHeight: 1, color: c.ink, letterSpacing: '-0.02em', marginTop: 4 }}>
@@ -886,8 +904,6 @@ function UhrzeitApp() {
             hasNext={levelId < LEVELS.length - 1} /> :
           <Body S={S} actions={game.actions} level={level} c={c} theme={theme}
             accent={accent} font="Fredoka, sans-serif" labelFont="JetBrains Mono" />}
-
-        <ResetButton onReset={handleReset} c={c} soft={c.soft} />
       </div>
       {celeb && <Celebrate streak={celeb} c={c} accent={accent} />}
     </div>
