@@ -505,7 +505,7 @@ function LevelTrack({ levelId, setLevelId, mastery, accent, ink, soft }) {
             <div key={i}
               onClick={(e) => { e.stopPropagation(); setLevelId(i); }}
               style={{ position: 'absolute', left: `calc(14px + ${x}% * (100% - 28px) / 100%)`,
-                top: 8, transform: 'translateX(-50%)',
+                top: 21, transform: 'translate(-50%, -50%)',
                 cursor: 'pointer', zIndex: active ? 3 : 2,
               }}>
               <LevelIcon tier={tier} active={active} accent={accent} ink={ink}
