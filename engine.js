@@ -130,6 +130,36 @@ function snapHour(ang){
   const h = Math.round(ang / 30);
   return ((h % 12) + 12) % 12 || 12;
 }
+// Snap an angle to the nearest minute value the grid allows (circular).
+// A drag that lands slightly before 12 snaps to 0 rather than the far side
+// of the dial.
+function snapToAllowedMinutes(ang, allowedMinutes) {
+  const raw = ((Math.round(ang / 6) % 60) + 60) % 60;
+  let best = allowedMinutes[0];
+  let bestDist = Math.min(Math.abs(raw - best), 60 - Math.abs(raw - best));
+  for (const m of allowedMinutes) {
+    const d = Math.min(Math.abs(raw - m), 60 - Math.abs(raw - m));
+    if (d < bestDist) { best = m; bestDist = d; }
+  }
+  return best;
+}
+
+// Snap grid for the minute hand — visual snapping, independent of which
+// minute-set the level scores as correct. For the broad time categories
+// (full/half/quarter hours), the hand always rests on 12/3/6/9, even if
+// the exercise only accepts 12 or 6. For 5-minute precision, any 5-min
+// mark. Returning null means "don't snap" (free minute resolution).
+const QUARTER_GRID = [0, 15, 30, 45];
+const FUENF_GRID   = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
+function minuteSnapGrid(level) {
+  switch (level.minuteSet) {
+    case 'volle':
+    case 'halbe':
+    case 'viertel': return QUARTER_GRID;
+    case 'fuenf':   return FUENF_GRID;
+    default:        return null;
+  }
+}
 
 // Build a question for a level — used by the game hook and tests.
 function makeQuestion(level, rand = Math.random) {
@@ -180,7 +210,10 @@ function resetMastery() {
 Object.assign(window, {
   HOUR_NAMES, hourName, parseTime, digitalStr, digitalFromQ, wordFromQ,
   MINUTE_SETS, LEVELS, pickRandom, shuffle,
-  buildDigitalOptions, buildWordOptions, snap5deg, snapHour, makeQuestion,
+  buildDigitalOptions, buildWordOptions,
+  snap5deg, snapHour, snapToAllowedMinutes, minuteSnapGrid,
+  QUARTER_GRID, FUENF_GRID,
+  makeQuestion,
   MASTERY_KEY, LEVEL_KEY,
   loadMastery, saveMastery, masteryTier, recordMastery, resetMastery,
 });

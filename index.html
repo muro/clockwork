@@ -175,11 +175,25 @@ function useClockGame({ levelId = 0, roundN = 10, onMilestone, onRoundDone } = {
     finishQuestion((S.setM === m) && (S.setH === h));
   };
 
-  const setHandAngle = (ang, which, live = false) => {
+  const setHandAngle = (ang, which, live = false, hourBaseDeg) => {
     if (S.locked) return;
     if (live) return;
-    if (which === "minute") S.setM = snap5deg(ang);
-    else S.setH = snapHour(ang);
+    if (which === "minute") {
+      // Snap to the visual grid for the level — 12/3/6/9 for full/half/quarter
+      // modes, every 5 min for fuenf. This is independent of the question's
+      // correct answer so the hand always rests on a sensible mark.
+      const grid = minuteSnapGrid(level);
+      S.setM = grid ? snapToAllowedMinutes(ang, grid) : (((Math.round(ang / 6) % 60) + 60) % 60);
+      // When the drag tracked an accumulated hour angle, recover setH from it
+      // so a minute-hand rotation that crossed the 12 rolls the hour over too.
+      if (hourBaseDeg !== undefined) {
+        const hourMark = ((hourBaseDeg - S.setM * 0.5) % 360 + 360) % 360;
+        const hInt = Math.round(hourMark / 30) % 12;
+        S.setH = hInt === 0 ? 12 : hInt;
+      }
+    } else {
+      S.setH = snapHour(ang);
+    }
     refresh();
   };
   const setActiveHand = (h) => { S.activeHand = h; refresh(); };
@@ -213,9 +227,32 @@ function Clock({
 }) {
   const faceRef = React.useRef(null);
   const [drag, setDrag] = React.useState(null);
+  // Live rotations during a drag. Stored unwrapped (can be any real number,
+  // including negative or >360) so a full rotation is physically meaningful
+  // and we don't snap to the other side of the dial by accident.
+  const [live, setLive] = React.useState(null); // { hour, min } | null
   const R = size / 2;
-  const hourAng = ((h % 12) * 30) + (m * 0.5);
-  const minAng = (m / 60) * 360;
+  const targetHourAng = ((h % 12) * 30) + (m * 0.5);
+  const targetMinAng  = (m / 60) * 360;
+
+  // Unwrap-on-render: the transform we actually set each frame is picked as
+  // the equivalent angle (canonical ± k*360°) closest to the previous render.
+  // That keeps CSS transitions on the short arc even when the drag left the
+  // hand at −10° but the canonical post-snap value is 350°.
+  const prevHour = React.useRef(targetHourAng);
+  const prevMin  = React.useRef(targetMinAng);
+  const unwrap = (curr, prev) => {
+    let v = curr;
+    while (v - prev > 180) v -= 360;
+    while (v - prev < -180) v += 360;
+    return v;
+  };
+  const hourAng = live ? live.hour : unwrap(targetHourAng, prevHour.current);
+  const minAng  = live ? live.min  : unwrap(targetMinAng,  prevMin.current);
+  React.useLayoutEffect(() => {
+    prevHour.current = hourAng;
+    prevMin.current  = minAng;
+  });
 
   const getAng = (e) => {
     const rect = faceRef.current.getBoundingClientRect();
@@ -230,17 +267,40 @@ function Clock({
 
   React.useEffect(() => {
     if (!drag) return;
+    // Signed per-frame delta so the hour hand gears with the minute hand in
+    // both directions. The pointer's absolute angle wraps at 360° — deltas
+    // don't.
+    let hourRaw = prevHour.current;
+    let minRaw  = prevMin.current;
+    let lastPointerAng = null;
+    const shortDelta = (a, b) => { let d = a - b; if (d > 180) d -= 360; else if (d < -180) d += 360; return d; };
+
     const move = (e) => {
       e.preventDefault();
       const ang = getAng(e);
+      // On the first move, anchor the step to where the dragged hand already
+      // sits so the hand teleports from its rendered position to the pointer.
+      const anchor = drag === 'minute' ? (((minRaw % 360) + 360) % 360) : (((hourRaw % 360) + 360) % 360);
+      const step = lastPointerAng === null ? shortDelta(ang, anchor) : shortDelta(ang, lastPointerAng);
+      lastPointerAng = ang;
+      if (drag === 'minute') {
+        minRaw  += step;
+        hourRaw += step / 12;
+      } else {
+        hourRaw += step;
+      }
+      setLive({ hour: hourRaw, min: minRaw });
       onSetAngle && onSetAngle(ang, drag, true);
-      const el = document.querySelector(`[data-clock-hand="${drag}"][data-clock-id="${faceRef.current.dataset.clockId}"]`);
-      if (el) el.style.transform = `rotate(${ang}deg)`;
     };
     const up = () => {
-      const el = document.querySelector(`[data-clock-hand="${drag}"][data-clock-id="${faceRef.current.dataset.clockId}"]`);
-      const finalAng = el ? (parseFloat(el.style.transform.replace(/[^\d.-]/g,'')) || 0) : 0;
-      onSetAngle && onSetAngle(finalAng, drag, false);
+      // Feed accumulated raw angles back; the hook snaps and may roll setH
+      // when the minute crossed the 12.
+      onSetAngle && onSetAngle(
+        drag === 'minute' ? minRaw : hourRaw,
+        drag, false,
+        drag === 'minute' ? hourRaw : undefined,
+      );
+      setLive(null);
       setDrag(null);
     };
     document.addEventListener('mousemove', move);
@@ -333,11 +393,16 @@ function Clock({
 
   const hourLen = Math.round(size * 0.26);
   const minLen  = Math.round(size * 0.39);
+  // Transitions are off while actively dragging (live rotations update every
+  // frame). After release, `live` clears, the render switches back to the
+  // target angle — unwrapped to stay within 180° of the drag's last value —
+  // and the transition animates the short arc to the snapped position.
+  const transition = live ? 'none' : 'transform .55s cubic-bezier(.34,1.56,.64,1)';
   const hourBase = {
     position: 'absolute', left: '50%', top: '50%',
     transformOrigin: '50% 100%',
     transform: `rotate(${hourAng}deg)`,
-    transition: drag === 'hour' ? 'none' : 'transform .55s cubic-bezier(.34,1.56,.64,1)',
+    transition,
     background: theme.hourHand || '#2a2418',
     pointerEvents: 'none',
   };
@@ -345,7 +410,7 @@ function Clock({
     position: 'absolute', left: '50%', top: '50%',
     transformOrigin: '50% 100%',
     transform: `rotate(${minAng}deg)`,
-    transition: drag === 'minute' ? 'none' : 'transform .55s cubic-bezier(.34,1.56,.64,1)',
+    transition,
     background: theme.minHand || '#e8590c',
     pointerEvents: 'none',
   };

@@ -139,6 +139,47 @@ group('snap5deg / snapHour', () => {
   test('snapHour snaps 359° → 12', () => eq(snapHour(359), 12));
 });
 
+group('minuteSnapGrid', () => {
+  test('volle / halbe / viertel all share the 12/3/6/9 grid', () => {
+    for (const ms of ['volle', 'halbe', 'viertel']) {
+      eq(minuteSnapGrid({ minuteSet: ms }), QUARTER_GRID, `minuteSet=${ms}`);
+    }
+  });
+  test('fuenf uses the 5-minute grid', () => {
+    eq(minuteSnapGrid({ minuteSet: 'fuenf' }), FUENF_GRID);
+  });
+  test('unknown minuteSet returns null (no snap)', () => {
+    eq(minuteSnapGrid({ minuteSet: 'minute' }), null);
+  });
+});
+
+group('snapToAllowedMinutes', () => {
+  test('volle: any angle → 0', () => {
+    for (const ang of [0, 90, 180, 270, 354]) eq(snapToAllowedMinutes(ang, [0]), 0, `ang=${ang}`);
+  });
+  test('halbe: snaps to 0 near 12, to 30 near 6', () => {
+    eq(snapToAllowedMinutes(10, [0, 30]), 0);
+    eq(snapToAllowedMinutes(100, [0, 30]), 30);
+    eq(snapToAllowedMinutes(180, [0, 30]), 30);
+    eq(snapToAllowedMinutes(260, [0, 30]), 30);
+    eq(snapToAllowedMinutes(355, [0, 30]), 0);
+  });
+  test('viertel: snaps to nearest of {0, 15, 30, 45}', () => {
+    eq(snapToAllowedMinutes(30, [0, 15, 30, 45]), 0);   // 5 min — closer to 0
+    eq(snapToAllowedMinutes(60, [0, 15, 30, 45]), 15);  // 10 min — closer to 15
+    eq(snapToAllowedMinutes(135, [0, 15, 30, 45]), 30); // 22.5 → 30
+    eq(snapToAllowedMinutes(260, [0, 15, 30, 45]), 45); // 43.3 → 45
+  });
+  test('near-zero backwards angle snaps to 0 (circular distance)', () => {
+    eq(snapToAllowedMinutes(-6, [0, 30]), 0);           // 1 min backwards
+    eq(snapToAllowedMinutes(354, [0, 15, 30, 45]), 0);  // visually just before 12
+  });
+  test('fuenf: snaps to nearest 5-min mark', () => {
+    eq(snapToAllowedMinutes(42, [0,5,10,15,20,25,30,35,40,45,50,55]), 5);  // 7 min → 5
+    eq(snapToAllowedMinutes(48, [0,5,10,15,20,25,30,35,40,45,50,55]), 10); // 8 min → 10
+  });
+});
+
 // ─────────────────────────────────────────────────────────────
 // MASTERY
 // ─────────────────────────────────────────────────────────────
@@ -214,12 +255,20 @@ group('exercise: wort-lesen', () => {
     contains(options, 'halb drei');
     contains(options, 'halb fünf');
   });
-  test('Viertel distractor flips nach↔vor on adjacent hour', () => {
-    // 3:15 correct = "Viertel nach drei"; distractor should include "Viertel vor vier"
+  test('Viertel nach has a "Viertel vor" distractor one hour ahead', () => {
+    // 3:15 correct = "Viertel nach drei"; engine adds parseTime(next, 45) as
+    // a nach↔vor confuser, which for h=3 is "Viertel vor fünf".
     const q = { h: 3, m: 15, dh: 3, parsed: parseTime(3, 15) };
     const { options } = buildWordOptions(q, { mode: 'wort-lesen', minuteSet: 'viertel', hour24: false });
     contains(options, 'Viertel nach drei');
+    contains(options, 'Viertel vor fünf');
+  });
+  test('Viertel vor has a "Viertel nach" distractor one hour back', () => {
+    // 3:45 correct = "Viertel vor vier"; engine adds parseTime(h-1, 15) = "Viertel nach zwei".
+    const q = { h: 3, m: 45, dh: 3, parsed: parseTime(3, 45) };
+    const { options } = buildWordOptions(q, { mode: 'wort-lesen', minuteSet: 'viertel', hour24: false });
     contains(options, 'Viertel vor vier');
+    contains(options, 'Viertel nach zwei');
   });
 });
 
