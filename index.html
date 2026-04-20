@@ -473,8 +473,10 @@ function LevelIcon({ tier, active, accent, ink, fillProgress = 0 }) {
     </div>;
   }
   if (tier === 1) {
-    return <svg width={size+4} height={size+4} viewBox="0 0 28 28" style={{ display: 'block' }}>
-      <circle cx="14" cy="14" r="13" fill="#fff" stroke={active ? accent : 'rgba(42,36,24,0.28)'} strokeWidth={active?2.5:1.5}/>
+    // No outlined circle — sprout sits directly on the page. Active state just
+    // thickens the stem/leaves slightly so it reads as selected.
+    return <svg width={size} height={size} viewBox="0 0 28 28" style={{ display: 'block' }}>
+      {active && <circle cx="14" cy="14" r="13" fill="none" stroke={accent} strokeWidth="2"/>}
       <path d="M14 20 Q14 14 10 11 Q12 14 14 20 Q14 14 18 11 Q16 14 14 20" fill="#8bc34a" stroke="#558b2f" strokeWidth="0.8"/>
       <line x1="14" y1="20" x2="14" y2="22" stroke="#558b2f" strokeWidth="1.5" strokeLinecap="round"/>
     </svg>;
