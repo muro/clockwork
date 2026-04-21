@@ -15,25 +15,34 @@
   :root {
     color-scheme: light;
     /* Theme tokens — set by JS when the theme changes. Defaults match "sun". */
-    --bg-top: #fffbe0;
-    --bg-mid: #fef3b8;
-    --bg-bot: #fde884;
+    --bg-base: #fde884;
+    --bg-image: linear-gradient(transparent, transparent);
+    --bg-texture-opacity: 0;
     --ink: #2a2418;
-    --sun-core: #ffffff;
-    --sun-mid: #fcc419;
-    --sun-edge: #f59f00;
-    --sun-opacity: 0.55;
+    --glass-fill: rgba(255,255,255,0.55);
+    --glass-edge: rgba(255,255,255,0.7);
+    --glass-shine: rgba(255,255,255,0.85);
+    --glass-under: rgba(0,0,0,0.05);
   }
   html, body {
     margin: 0; padding: 0;
-    background:
-      radial-gradient(ellipse 80% 30% at 50% 0%, var(--bg-top) 0%, transparent 60%),
-      linear-gradient(180deg, var(--bg-mid) 0%, var(--bg-bot) 100%);
+    background: var(--bg-image), var(--bg-base);
     background-attachment: fixed;
     min-height: 100vh;
     min-height: 100dvh;
     -webkit-tap-highlight-color: transparent;
     overscroll-behavior: none;
+  }
+  /* Subtle canvas-noise overlay driven per-theme via --bg-texture-opacity.
+     Uses an inline SVG feTurbulence — no network fetch, no extra file. */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    pointer-events: none; z-index: 0;
+    opacity: var(--bg-texture-opacity);
+    mix-blend-mode: multiply;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.15  0 0 0 0 0.15  0 0 0 0 0.1  0 0 0 0.8 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+    background-size: 220px 220px;
   }
   body { font-family: Nunito, sans-serif; color: var(--ink); }
   button { font-family: inherit; cursor: pointer; }
@@ -55,15 +64,20 @@
     min-height: 100dvh;
     box-sizing: border-box;
     overflow: hidden;
+    z-index: 1;
   }
-  .sun {
-    position: absolute;
-    top: -60px; right: -50px;
-    width: 160px; height: 160px;
-    border-radius: 50%;
-    background: radial-gradient(circle at 35% 35%, var(--sun-core), var(--sun-mid) 55%, var(--sun-edge) 100%);
-    opacity: var(--sun-opacity);
-    pointer-events: none;
+  /* Glass material — glossy, high-clarity, not frosted. Thin blur for edge
+     integrity + a saturate bump to let the theme light read through. */
+  .glass {
+    background: var(--glass-fill, rgba(255,255,255,0.55));
+    border: 1px solid var(--glass-edge, rgba(255,255,255,0.7));
+    box-shadow:
+      inset 0 1px 0 var(--glass-shine, rgba(255,255,255,0.8)),
+      inset 0 -1px 0 var(--glass-under, rgba(0,0,0,0.04)),
+      0 1px 2px rgba(0,0,0,0.06),
+      0 6px 18px -6px rgba(0,0,0,0.12);
+    backdrop-filter: blur(6px) saturate(140%);
+    -webkit-backdrop-filter: blur(6px) saturate(140%);
   }
 </style>
 </head>
@@ -77,118 +91,210 @@
 
 <script type="text/babel" data-presets="react">
 // ============================================================
-// THEMES — page palette + clock theme in one object per theme
+// THEMES — watercolor backdrop (blobs + optional noise) + a glossy-glass
+// material applied to buttons / header chrome. The clock is enamel behind
+// glass: solid face, Swiss-rail-ish hands, subtle top-edge sheen.
 // ============================================================
-const THEMES = {
-  sun: {
-    label: 'Sonne',
-    page: { top: '#fffbe0', mid: '#fef3b8', bot: '#fde884' },
-    sun:  { core: '#ffffff', mid: '#fcc419', edge: '#f59f00', opacity: 0.55 },
-    ink: '#2a2418',
-    soft: '#8c826a',
-    paper: '#fffef5',
-    accent: '#e8590c',
-    accentSoft: 'rgba(232,89,12,0.22)',
-    correct: '#5c940d',
-    wrong: '#c92a2a',
-    buttonSurface: 'rgba(255,255,255,0.45)',
-    buttonBorder: 'rgba(42,36,24,0.18)',
-    clockFace: 'rgba(255,253,235,0.8)',
-    clockBorder: '#2a2418',
-    tickMinor: 'rgba(42,36,24,0.4)',
+const GLASS = {
+  // Light-surface defaults — overridden by theme.glass when the theme sits
+  // on a dark background (night/abend).
+  light: {
+    fill:   'rgba(255,255,255,0.55)',
+    edge:   'rgba(255,255,255,0.7)',
+    shine:  'rgba(255,255,255,0.85)',
+    under:  'rgba(0,0,0,0.05)',
+    selectedInk: null, // defaults to T.ink
   },
-  night: {
-    label: 'Nacht',
-    page: { top: '#1e3050', mid: '#0f1c33', bot: '#070e1c' },
-    sun:  { core: '#eef3ff', mid: '#a8b8d4', edge: '#5b7090', opacity: 0.35 },
-    ink: '#e8edf7',
-    soft: '#8ba0c4',
-    paper: '#1c2a45',
-    accent: '#5b9cf5',
-    accentSoft: 'rgba(91,156,245,0.22)',
-    correct: '#7bc47f',
-    wrong: '#ff6b6b',
-    buttonSurface: 'rgba(255,255,255,0.06)',
-    buttonBorder: 'rgba(255,255,255,0.14)',
-    clockFace: 'rgba(28,42,69,0.85)',
-    clockBorder: '#8ba0c4',
-    tickMinor: 'rgba(232,237,247,0.3)',
-  },
-  blossom: {
-    label: 'Blüte',
-    page: { top: '#fff5e0', mid: '#ffd0e1', bot: '#ffe8a8' },
-    sun:  { core: '#ffffff', mid: '#ffc0d6', edge: '#e13b7b', opacity: 0.55 },
-    ink: '#5a1f3f',
-    soft: '#a06b85',
-    paper: '#fffaf5',
-    accent: '#e13b7b',
-    accentSoft: 'rgba(225,59,123,0.22)',
-    correct: '#5c940d',
-    wrong: '#c92a2a',
-    buttonSurface: 'rgba(255,255,255,0.55)',
-    buttonBorder: 'rgba(90,31,63,0.18)',
-    clockFace: 'rgba(255,250,245,0.85)',
-    clockBorder: '#5a1f3f',
-    tickMinor: 'rgba(90,31,63,0.35)',
-  },
-  iris: {
-    label: 'Iris',
-    page: { top: '#e8dcf7', mid: '#c9b8e5', bot: '#fce890' },
-    sun:  { core: '#ffffff', mid: '#e8dcf7', edge: '#8b5fbf', opacity: 0.5 },
-    ink: '#3e1f5c',
-    soft: '#7d6ea5',
-    paper: '#fdf9e7',
-    accent: '#8b5fbf',
-    accentSoft: 'rgba(139,95,191,0.22)',
-    correct: '#5c940d',
-    wrong: '#c92a2a',
-    buttonSurface: 'rgba(255,255,255,0.5)',
-    buttonBorder: 'rgba(62,31,92,0.18)',
-    clockFace: 'rgba(253,249,231,0.85)',
-    clockBorder: '#3e1f5c',
-    tickMinor: 'rgba(62,31,92,0.35)',
+  dark: {
+    fill:   'rgba(255,255,255,0.08)',
+    edge:   'rgba(255,255,255,0.18)',
+    shine:  'rgba(255,255,255,0.25)',
+    under:  'rgba(0,0,0,0.25)',
+    selectedInk: null,
   },
 };
+
+// Shorthand for a radial blob with transparent edges — watercolor feel.
+const blob = (pos, color, size = '55%') =>
+  `radial-gradient(circle at ${pos}, ${color} 0%, transparent ${size})`;
+
+const THEMES = {
+  sonne: {
+    label: 'Sonne', dark: false,
+    bgBase: '#fde884',
+    bgBlobs: [
+      blob('50% -10%',  'rgba(255,251,224,0.95)', '55%'),
+      blob('85% 15%',   'rgba(252,196,25,0.55)',  '45%'),
+      blob('10% 85%',   'rgba(245,159,0,0.35)',   '55%'),
+    ],
+    bgTexture: 0,
+    ink: '#2a2418', soft: '#8c826a', accent: '#e8590c',
+    accentSoft: 'rgba(232,89,12,0.22)', correct: '#3f7b0a', wrong: '#b91c1c',
+    enamel: '#fffdf3', enamelEdge: '#1f1a10', enamelInk: '#1f1a10',
+    tickMinor: 'rgba(31,26,16,0.45)',
+  },
+  nacht: {
+    label: 'Nacht', dark: true,
+    bgBase: '#070e1c',
+    bgBlobs: [
+      blob('80% 10%',  'rgba(91,156,245,0.35)', '55%'),
+      blob('15% 40%',  'rgba(45,80,135,0.55)',  '55%'),
+      blob('60% 95%',  'rgba(24,50,95,0.7)',    '55%'),
+    ],
+    bgTexture: 0,
+    ink: '#e8edf7', soft: '#8ba0c4', accent: '#5b9cf5',
+    accentSoft: 'rgba(91,156,245,0.22)', correct: '#86d39a', wrong: '#ff7b7b',
+    enamel: '#0d1830', enamelEdge: '#c0cce0', enamelInk: '#e8edf7',
+    tickMinor: 'rgba(232,237,247,0.32)',
+  },
+  bluete: {
+    label: 'Blüte', dark: false,
+    bgBase: '#ffe8a8',
+    bgBlobs: [
+      blob('20% 10%',  'rgba(255,179,208,0.85)', '55%'),
+      blob('85% 30%',  'rgba(255,228,135,0.75)', '50%'),
+      blob('50% 95%',  'rgba(225,59,123,0.25)',  '45%'),
+    ],
+    bgTexture: 0,
+    ink: '#5a1f3f', soft: '#a06b85', accent: '#e13b7b',
+    accentSoft: 'rgba(225,59,123,0.22)', correct: '#3f7b0a', wrong: '#b91c1c',
+    enamel: '#fffaf5', enamelEdge: '#5a1f3f', enamelInk: '#5a1f3f',
+    tickMinor: 'rgba(90,31,63,0.38)',
+  },
+  iris: {
+    label: 'Iris', dark: false,
+    bgBase: '#fce890',
+    bgBlobs: [
+      blob('20% 10%',  'rgba(139,95,191,0.7)',  '55%'),
+      blob('90% 25%',  'rgba(201,184,229,0.85)','45%'),
+      blob('55% 95%',  'rgba(252,232,144,0.9)', '55%'),
+    ],
+    bgTexture: 0,
+    ink: '#3e1f5c', soft: '#7d6ea5', accent: '#8b5fbf',
+    accentSoft: 'rgba(139,95,191,0.22)', correct: '#3f7b0a', wrong: '#b91c1c',
+    enamel: '#fdf9e7', enamelEdge: '#3e1f5c', enamelInk: '#3e1f5c',
+    tickMinor: 'rgba(62,31,92,0.38)',
+  },
+  nebel: {
+    label: 'Nebel', dark: false,
+    bgBase: '#e4e8ec',
+    bgBlobs: [
+      blob('15% 15%',  'rgba(120,165,170,0.45)', '55%'),
+      blob('80% 40%',  'rgba(200,210,220,0.9)',  '55%'),
+      blob('40% 90%',  'rgba(90,120,130,0.30)',  '55%'),
+    ],
+    bgTexture: 0.05,
+    ink: '#263238', soft: '#6b7a82', accent: '#2f7c8c',
+    accentSoft: 'rgba(47,124,140,0.22)', correct: '#3f7b0a', wrong: '#b91c1c',
+    enamel: '#fdfdfb', enamelEdge: '#263238', enamelInk: '#263238',
+    tickMinor: 'rgba(38,50,56,0.42)',
+  },
+  koralle: {
+    label: 'Koralle', dark: false,
+    bgBase: '#fff1dc',
+    bgBlobs: [
+      blob('85% 10%',  'rgba(255,138,120,0.55)', '50%'),
+      blob('15% 80%',  'rgba(255,196,120,0.7)',  '55%'),
+      blob('55% 45%',  'rgba(255,235,210,0.85)', '60%'),
+    ],
+    bgTexture: 0,
+    ink: '#5b2a1c', soft: '#a37766', accent: '#e85a3c',
+    accentSoft: 'rgba(232,90,60,0.22)', correct: '#3f7b0a', wrong: '#b91c1c',
+    enamel: '#fffaf0', enamelEdge: '#5b2a1c', enamelInk: '#5b2a1c',
+    tickMinor: 'rgba(91,42,28,0.4)',
+  },
+  minze: {
+    label: 'Minze', dark: false,
+    bgBase: '#f0faf4',
+    bgBlobs: [
+      blob('20% 20%',  'rgba(130,210,180,0.55)', '50%'),
+      blob('85% 70%',  'rgba(180,230,220,0.75)', '50%'),
+      blob('50% 100%', 'rgba(90,180,160,0.25)',  '50%'),
+    ],
+    bgTexture: 0,
+    ink: '#14362b', soft: '#5f877a', accent: '#1d8f6a',
+    accentSoft: 'rgba(29,143,106,0.22)', correct: '#3f7b0a', wrong: '#b91c1c',
+    enamel: '#fdfffc', enamelEdge: '#14362b', enamelInk: '#14362b',
+    tickMinor: 'rgba(20,54,43,0.38)',
+  },
+  abend: {
+    label: 'Abend', dark: true,
+    bgBase: '#1a0f2e',
+    bgBlobs: [
+      blob('85% 85%',  'rgba(255,176,90,0.6)',  '45%'),
+      blob('25% 70%',  'rgba(180,80,120,0.55)', '50%'),
+      blob('55% 15%',  'rgba(50,30,80,0.8)',    '60%'),
+    ],
+    bgTexture: 0,
+    ink: '#f3ecde', soft: '#b6a5c3', accent: '#ffb05a',
+    accentSoft: 'rgba(255,176,90,0.22)', correct: '#a8d98a', wrong: '#ff8080',
+    enamel: '#231735', enamelEdge: '#d9c4a8', enamelInk: '#f3ecde',
+    tickMinor: 'rgba(243,236,222,0.32)',
+  },
+  wald: {
+    label: 'Wald', dark: false,
+    bgBase: '#e4ebdc',
+    bgBlobs: [
+      blob('25% 20%',  'rgba(112,140,70,0.55)',  '55%'),
+      blob('80% 60%',  'rgba(180,185,130,0.65)', '55%'),
+      blob('45% 95%',  'rgba(80,105,55,0.30)',   '60%'),
+    ],
+    bgTexture: 0.09,
+    ink: '#1f2a14', soft: '#627054', accent: '#5d8a2a',
+    accentSoft: 'rgba(93,138,42,0.22)', correct: '#3f7b0a', wrong: '#b91c1c',
+    enamel: '#fbfcf5', enamelEdge: '#1f2a14', enamelInk: '#1f2a14',
+    tickMinor: 'rgba(31,42,20,0.42)',
+  },
+};
+
+function glassTokensFor(T) {
+  const base = T.dark ? GLASS.dark : GLASS.light;
+  return { ...base, ...(T.glass || {}) };
+}
+
 const THEME_KEY = 'uhrzeit.theme';
 
 function useTheme() {
   const [id, setId] = React.useState(() => {
-    try { const v = localStorage.getItem(THEME_KEY); return THEMES[v] ? v : 'sun'; }
-    catch { return 'sun'; }
+    try { const v = localStorage.getItem(THEME_KEY); return THEMES[v] ? v : 'sonne'; }
+    catch { return 'sonne'; }
   });
-  const T = THEMES[id] || THEMES.sun;
+  const T = THEMES[id] || THEMES.sonne;
   React.useEffect(() => {
     try { localStorage.setItem(THEME_KEY, id); } catch {}
     const root = document.documentElement;
-    root.style.setProperty('--bg-top', T.page.top);
-    root.style.setProperty('--bg-mid', T.page.mid);
-    root.style.setProperty('--bg-bot', T.page.bot);
+    root.style.setProperty('--bg-base', T.bgBase);
+    root.style.setProperty('--bg-image', T.bgBlobs.join(', '));
+    root.style.setProperty('--bg-texture-opacity', String(T.bgTexture || 0));
     root.style.setProperty('--ink', T.ink);
-    root.style.setProperty('--sun-core', T.sun.core);
-    root.style.setProperty('--sun-mid', T.sun.mid);
-    root.style.setProperty('--sun-edge', T.sun.edge);
-    root.style.setProperty('--sun-opacity', String(T.sun.opacity));
+    const g = glassTokensFor(T);
+    root.style.setProperty('--glass-fill',  g.fill);
+    root.style.setProperty('--glass-edge',  g.edge);
+    root.style.setProperty('--glass-shine', g.shine);
+    root.style.setProperty('--glass-under', g.under);
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', T.page.bot);
+    if (meta) meta.setAttribute('content', T.bgBase);
   }, [id]);
   return { id, setId, T };
 }
 
 function ThemePicker({ id, setId, T }) {
   return <div role="tablist" aria-label="Farbschema"
-    style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+    style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
     {Object.entries(THEMES).map(([key, th]) => {
       const active = key === id;
       return <button key={key} role="tab" aria-label={th.label} aria-selected={active}
         title={th.label}
         onClick={(e) => { e.stopPropagation(); setId(key); }}
         style={{
-          width: 16, height: 16, padding: 0, borderRadius: '50%',
+          width: 14, height: 14, padding: 0, borderRadius: '50%',
           background: th.accent, cursor: 'pointer',
-          border: active ? `2px solid ${T.ink}` : `1px solid ${T.buttonBorder}`,
-          boxShadow: active ? `0 0 0 2px ${T.page.bot}` : 'none',
+          border: active ? `2px solid ${T.ink}` : `1px solid rgba(0,0,0,0.18)`,
+          boxShadow: active
+            ? `0 0 0 2px ${T.bgBase}, 0 1px 2px rgba(0,0,0,0.25)`
+            : 'inset 0 1px 0 rgba(255,255,255,0.4), 0 1px 1px rgba(0,0,0,0.15)',
           transition: 'box-shadow .15s, border-color .15s, transform .15s',
-          transform: active ? 'scale(1.08)' : 'none',
+          transform: active ? 'scale(1.12)' : 'none',
         }} />;
     })}
   </div>;
@@ -523,6 +629,13 @@ function Clock({
     );
   });
 
+  // Size-proportional tick geometry — thicker 5-min marks, slim minute marks,
+  // slightly longer active tick. Swiss-rail-ish without copying the exact dial.
+  const majorT = Math.max(2, Math.round(size * 0.013));
+  const minorT = Math.max(1, Math.round(size * 0.006));
+  const majorL = Math.round(size * 0.06);
+  const minorL = Math.round(size * 0.028);
+
   // The minute the hand is currently "pointing at" — highlighted so the
   // learner can read off the exact minute, especially in 1-min-precision
   // levels where the hand lands between 5-min marks.
@@ -533,47 +646,56 @@ function Clock({
     const active = i === activeMinute;
     if (!major && !showMinorTicks && !active) continue;
     const rot = (i / 60) * 360;
-    const len = active ? majorLen + 4 : (major ? majorLen : minorLen);
-    const thick = active ? tickThickness + 1 : (major ? tickThickness : minorThickness);
+    const len = active ? Math.round(majorL * 1.15) : (major ? majorL : minorL);
+    const thick = active ? majorT + 1 : (major ? majorT : minorT);
     const color = active
       ? (theme.tickActive || theme.minHand || '#e8590c')
-      : (major ? (theme.tickColor || '#2a2418') : (theme.tickMinor || 'rgba(0,0,0,0.3)'));
+      : (major ? (theme.tickColor || '#1a1a1a') : (theme.tickMinor || 'rgba(0,0,0,0.32)'));
     ticks.push(
       <div key={i} data-nodrag style={{
-        position: 'absolute', left: '50%', top: 0,
+        position: 'absolute', left: '50%', top: Math.round(size * 0.035),
         width: thick, height: len,
         background: color,
-        transformOrigin: `${thick/2}px ${R}px`,
+        transformOrigin: `${thick/2}px ${R - Math.round(size * 0.035)}px`,
         transform: `translateX(-50%) rotate(${rot}deg)`,
-        borderRadius: 1, pointerEvents: 'none',
-        transition: live ? 'none' : 'background .2s, height .2s',
+        borderRadius: 0.5, pointerEvents: 'none',
+        transition: live ? 'none' : 'background .2s, height .2s, width .2s',
       }} />
     );
   }
 
   const hourLen = Math.round(size * 0.26);
-  const minLen  = Math.round(size * 0.39);
+  const minLen  = Math.round(size * 0.40);
+  const hourW = Math.max(5, Math.round(size * 0.028));
+  const minW  = Math.max(3, Math.round(size * 0.018));
+  const discSize = Math.round(size * 0.08);
   // Transitions are off while actively dragging (live rotations update every
   // frame). After release, `live` clears, the render switches back to the
   // target angle — unwrapped to stay within 180° of the drag's last value —
   // and the transition animates the short arc to the snapped position.
   const transition = live ? 'none' : 'transform .55s cubic-bezier(.34,1.56,.64,1)';
-  const hourBase = {
+  const handWrapBase = {
     position: 'absolute', left: '50%', top: '50%',
-    transformOrigin: '50% 100%',
-    transform: `rotate(${hourAng}deg)`,
+    width: 0, height: 0,
+    transformOrigin: '0 0',
     transition,
-    background: theme.hourHand || '#2a2418',
     pointerEvents: 'none',
+    zIndex: 2,
   };
-  const minBase = {
-    position: 'absolute', left: '50%', top: '50%',
-    transformOrigin: '50% 100%',
-    transform: `rotate(${minAng}deg)`,
-    transition,
-    background: theme.minHand || '#e8590c',
-    pointerEvents: 'none',
-  };
+  const handShadow = '0 1px 2px rgba(0,0,0,0.22)';
+
+  // Glass cover sheen — subtle diagonal specular + inner shadow ring, gives
+  // the enamel face the feel of sitting under a clear glass lens.
+  const sheen = (
+    <div data-nodrag style={{
+      position: 'absolute', inset: 0, borderRadius: '50%',
+      pointerEvents: 'none', zIndex: 4,
+      background:
+        'linear-gradient(135deg, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0) 35%, ' +
+        'rgba(0,0,0,0) 65%, rgba(0,0,0,0.06) 100%)',
+      boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.35), inset 0 -1px 2px rgba(0,0,0,0.08)',
+    }} />
+  );
 
   return (
     <div
@@ -588,27 +710,61 @@ function Clock({
         cursor: interactive ? 'grab' : 'default',
       }}
     >
+      {/* Enamel face — opaque, hairline bezel, soft outer shadow. */}
       <div style={{
         position: 'absolute', inset: 0, borderRadius: '50%',
-        background: theme.face || '#fffef5',
-        border: theme.border || '1.5px solid #2a2418',
+        background: theme.enamel || '#fffdf3',
+        border: `1.5px solid ${theme.enamelEdge || '#1a1a1a'}`,
+        boxShadow:
+          '0 2px 10px rgba(0,0,0,0.10), 0 14px 28px -10px rgba(0,0,0,0.22), ' +
+          'inset 0 1.5px 2px rgba(255,255,255,0.5), inset 0 -1px 2px rgba(0,0,0,0.05)',
       }} />
       {ticks}
       {numerals}
+      {/* Hour hand — thicker slab with rounded tip. */}
       <div data-clock-id={clockId} data-clock-hand="hour" style={{
-        ...hourBase, width: 6, height: hourLen, marginLeft: -3, marginTop: -hourLen, borderRadius: 3,
-      }} />
+        ...handWrapBase, transform: `rotate(${hourAng}deg)`,
+      }}>
+        <div style={{
+          position: 'absolute', width: hourW, height: hourLen,
+          left: -hourW/2, top: -hourLen,
+          background: theme.hourHand || '#1a1a1a',
+          borderRadius: hourW/2, boxShadow: handShadow,
+        }} />
+      </div>
+      {/* Minute hand — slim slab with a terminal disc (Swiss-rail DNA). */}
       <div data-clock-id={clockId} data-clock-hand="minute" style={{
-        ...minBase, width: 4, height: minLen, marginLeft: -2, marginTop: -minLen, borderRadius: 2,
-      }} />
+        ...handWrapBase, transform: `rotate(${minAng}deg)`, zIndex: 3,
+      }}>
+        <div style={{
+          position: 'absolute', width: minW, height: minLen,
+          left: -minW/2, top: -minLen,
+          background: theme.minHand || '#e8590c',
+          borderRadius: minW/2, boxShadow: handShadow,
+        }} />
+        <div style={{
+          position: 'absolute', width: discSize, height: discSize,
+          left: -discSize/2, top: -minLen - discSize * 0.55,
+          background: theme.minHand || '#e8590c',
+          borderRadius: '50%',
+          boxShadow:
+            'inset 0 1px 0 rgba(255,255,255,0.35), inset 0 -1px 1px rgba(0,0,0,0.08), ' +
+            '0 1px 2px rgba(0,0,0,0.25)',
+        }} />
+      </div>
+      {/* Metallic pivot cap — small, highlit, seated between hand shadows and sheen. */}
       <div style={{
         position: 'absolute', left: '50%', top: '50%',
-        width: 10, height: 10, margin: '-5px 0 0 -5px',
-        borderRadius: '50%', background: theme.pivot || '#2a2418',
-        border: `2px solid ${theme.face || '#fffef5'}`,
-        boxShadow: `0 0 0 1px ${theme.pivot || '#2a2418'}`,
-        zIndex: 3, pointerEvents: 'none',
+        width: Math.round(size * 0.045), height: Math.round(size * 0.045),
+        marginLeft: -Math.round(size * 0.0225), marginTop: -Math.round(size * 0.0225),
+        borderRadius: '50%',
+        background: `radial-gradient(circle at 35% 30%, ${theme.enamel || '#fff'} 0%, ${theme.pivot || '#1a1a1a'} 65%)`,
+        boxShadow:
+          `0 0 0 1.2px ${theme.enamel || '#fff'}, 0 0 0 2.2px ${theme.pivot || '#1a1a1a'}, ` +
+          '0 1px 2px rgba(0,0,0,0.28)',
+        zIndex: 5, pointerEvents: 'none',
       }} />
+      {sheen}
     </div>
   );
 }
@@ -722,7 +878,7 @@ function LevelTrack({ levelId, setLevelId, mastery, accent, ink, soft }) {
         onMouseDown={onDown} onTouchStart={onDown}
         style={{ position: 'relative', height: 44, cursor: 'pointer', touchAction: 'none', marginTop: 10 }}>
         <div style={{ position: 'absolute', left: 14, right: 14, top: 20, height: 2,
-          background: 'rgba(42,36,24,0.18)', borderRadius: 1 }} />
+          background: `${ink}2b`, borderRadius: 1 }} />
         <div style={{ position: 'absolute', left: 14,
           width: `calc(${pct}% * (100% - 28px) / 100%)`, top: 20, height: 2,
           background: accent, borderRadius: 1, transition: drag ? 'none' : 'width .25s' }} />
@@ -769,26 +925,36 @@ function NextBtn({ onClick, c, font, accent }) {
 }
 
 function optionButtonStyle(state, c, font, shape) {
-  // Default surface: a thin low-contrast border over a transparent light
-  // layer — reads as part of the page rather than a bold outlined chip.
-  let bg = c.buttonSurface, color = c.ink, border = `1px solid ${c.buttonBorder}`;
-  if (state === 'selected') { bg = c.ink; color = c.paper; border = `1px solid ${c.ink}`; }
-  else if (state === 'correct') { color = c.correct; border = `1px solid ${c.correct}`; bg = c.buttonSurface; }
-  else if (state === 'wrong')   { color = c.wrong; border = `1px solid ${c.wrong}`; bg = c.buttonSurface; }
-  else if (state === 'faded')   { color = c.soft; border = `1px solid ${c.buttonBorder}`; bg = 'transparent'; }
+  const g = c.glass;
+  // Glossy glass: clear fill, 1px pale top edge as a specular highlight,
+  // hairline dark underline for weight, small drop shadow to float slightly.
+  const idleShadow =
+    `inset 0 1px 0 ${g.shine}, inset 0 -1px 0 ${g.under}, ` +
+    `0 1px 2px rgba(0,0,0,0.06), 0 6px 16px -6px rgba(0,0,0,0.12)`;
+  let bg = g.fill, color = c.ink, border = `1px solid ${g.edge}`, boxShadow = idleShadow;
+  if (state === 'selected') {
+    bg = c.ink; color = c.paper; border = `1px solid ${c.ink}`;
+    boxShadow = `inset 0 1px 0 rgba(255,255,255,0.18), 0 2px 6px rgba(0,0,0,0.22)`;
+  } else if (state === 'correct') {
+    color = c.correct; border = `1.5px solid ${c.correct}`;
+  } else if (state === 'wrong') {
+    color = c.wrong; border = `1.5px solid ${c.wrong}`;
+  } else if (state === 'faded') {
+    color = c.soft; border = `1px solid ${g.edge}`; bg = 'transparent'; boxShadow = 'none';
+  }
   const shared = {
-    fontFamily: font, border, background: bg, color,
-    letterSpacing: '-0.01em', transition: 'all .15s ease',
-    backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)',
+    fontFamily: font, border, background: bg, color, boxShadow,
+    letterSpacing: '-0.01em', transition: 'all .18s ease',
+    backdropFilter: 'blur(8px) saturate(140%)',
+    WebkitBackdropFilter: 'blur(8px) saturate(140%)',
+    cursor: 'pointer',
   };
   return shape === 'pill' ? {
-    ...shared,
-    fontWeight: 500, fontSize: 22,
+    ...shared, fontWeight: 500, fontSize: 22,
     padding: '14px 10px', minHeight: 56, borderRadius: 999,
     fontVariantNumeric: 'tabular-nums',
   } : {
-    ...shared,
-    fontWeight: 500, fontSize: 17,
+    ...shared, fontWeight: 500, fontSize: 17,
     padding: '13px 16px', minHeight: 50, borderRadius: 14,
     textAlign: 'left',
   };
@@ -933,13 +1099,16 @@ function RoundComplete({ c, accent, font, correct, tier, onAgain, onNext, hasNex
     <div style={{ display: 'flex', gap: 8, marginTop: 20, justifyContent: 'center' }}>
       <button onClick={onAgain}
         style={{ fontFamily: font, fontWeight: 600, fontSize: 15,
-          padding: '11px 22px', borderRadius: 999, border: `1px solid ${c.buttonBorder}`,
-          background: c.buttonSurface, color: c.ink, cursor: 'pointer',
-          backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}>Nochmal</button>
+          padding: '11px 22px', borderRadius: 999, border: `1px solid ${c.glass.edge}`,
+          background: c.glass.fill, color: c.ink, cursor: 'pointer',
+          boxShadow: `inset 0 1px 0 ${c.glass.shine}, 0 1px 2px rgba(0,0,0,0.08), 0 6px 14px -6px rgba(0,0,0,0.12)`,
+          backdropFilter: 'blur(8px) saturate(140%)',
+          WebkitBackdropFilter: 'blur(8px) saturate(140%)' }}>Nochmal</button>
       {hasNext && <button onClick={onNext}
         style={{ fontFamily: font, fontWeight: 600, fontSize: 15,
           padding: '11px 22px', borderRadius: 999, border: 0,
-          background: accent, color: c.paper, cursor: 'pointer' }}>Weiter →</button>}
+          background: accent, color: '#fff', cursor: 'pointer',
+          boxShadow: `inset 0 1px 0 rgba(255,255,255,0.3), 0 2px 6px rgba(0,0,0,0.2), 0 8px 18px -6px rgba(0,0,0,0.25)` }}>Weiter →</button>}
     </div>
   </div>;
 }
@@ -990,10 +1159,15 @@ function ResetIcon({ onReset, c, soft }) {
     style={{
       width: 26, height: 26, padding: 0, flexShrink: 0,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: armed ? c.wrong : 'transparent',
+      background: armed ? c.wrong : c.glass.fill,
       color: armed ? '#fff' : soft,
-      border: `1.5px solid ${armed ? c.wrong : 'rgba(42,36,24,0.18)'}`,
+      border: `1px solid ${armed ? c.wrong : c.glass.edge}`,
       borderRadius: '50%', cursor: 'pointer',
+      boxShadow: armed
+        ? `inset 0 1px 0 rgba(255,255,255,0.25), 0 2px 6px rgba(0,0,0,0.18)`
+        : `inset 0 1px 0 ${c.glass.shine}, 0 1px 2px rgba(0,0,0,0.08)`,
+      backdropFilter: 'blur(8px) saturate(140%)',
+      WebkitBackdropFilter: 'blur(8px) saturate(140%)',
       transition: 'background .15s, color .15s, border-color .15s',
     }}>
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1025,19 +1199,20 @@ function UhrzeitApp() {
   const S = game.state;
   const level = LEVELS[levelId];
 
+  const g = glassTokensFor(T);
   const c = {
-    paper: T.paper, ink: T.ink, soft: T.soft,
+    paper: T.enamel, ink: T.ink, soft: T.soft,
     correct: T.correct, wrong: T.wrong,
     accentSoft: T.accentSoft,
-    buttonSurface: T.buttonSurface,
-    buttonBorder: T.buttonBorder,
+    glass: g,
   };
   const accent = T.accent;
   const theme = {
-    face: T.clockFace, border: `1.5px solid ${T.clockBorder}`,
-    numeral: T.ink, hourHand: T.ink, minHand: accent,
-    tickColor: T.ink, tickMinor: T.tickMinor, pivot: T.ink,
+    enamel: T.enamel, enamelEdge: T.enamelEdge,
+    numeral: T.enamelInk, hourHand: T.enamelInk, minHand: accent,
+    tickColor: T.enamelInk, tickMinor: T.tickMinor, pivot: T.enamelInk,
     tickActive: accent,
+    dark: !!T.dark,
   };
 
   const handleReset = () => { reset(); setLevelId(0); game.actions.startRound(); };
@@ -1047,7 +1222,6 @@ function UhrzeitApp() {
 
   return (
     <div className="app-shell">
-      <div className="sun" />
       <div style={{ position: 'relative' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10,
           fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.2em',
@@ -1055,19 +1229,22 @@ function UhrzeitApp() {
           <span>№ {String(S.qIndex+1).padStart(2,'0')} / {String(S.roundN).padStart(2,'0')}</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <span>{S.score} Pkt · <span style={{ color: accent }}>{S.streak}↑</span></span>
-            <ThemePicker id={themeId} setId={setThemeId} T={T} />
             <ResetIcon onReset={handleReset} c={c} soft={c.soft} />
           </div>
         </div>
-        <div style={{ fontFamily: 'Fredoka, sans-serif', fontWeight: 600, fontSize: 30,
-          lineHeight: 1, color: c.ink, letterSpacing: '-0.02em', marginTop: 4 }}>
-          Die Uhrzeit
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end',
+          gap: 12, marginTop: 4 }}>
+          <div style={{ fontFamily: 'Fredoka, sans-serif', fontWeight: 600, fontSize: 30,
+            lineHeight: 1, color: c.ink, letterSpacing: '-0.02em' }}>
+            Die Uhrzeit
+          </div>
+          <ThemePicker id={themeId} setId={setThemeId} T={T} />
         </div>
 
         <div style={{ display: 'flex', gap: 3, marginTop: 10 }}>
           {Array.from({length: S.roundN}, (_,i) => {
             const bg = i < S.round.length ? (S.round[i] ? c.correct : c.wrong) :
-                       i === S.qIndex ? accent : 'rgba(0,0,0,0.12)';
+                       i === S.qIndex ? accent : `${c.ink}22`;
             return <div key={i} style={{ flex: 1, height: 3, background: bg, borderRadius: 2 }} />;
           })}
         </div>
