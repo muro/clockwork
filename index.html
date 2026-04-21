@@ -118,77 +118,168 @@ const GLASS = {
 const blob = (pos, color, size = '55%') =>
   `radial-gradient(circle at ${pos}, ${color} 0%, transparent ${size})`;
 
+// Hand shapes — SVG path/element builders. Each builder draws a hand starting
+// at the clock centre (0,0) extending upward to (0,-L). The outer renderer
+// rotates the whole thing into position.
+const HAND_SHAPES = {
+  slab: {
+    label: 'Schlicht',
+    draw: (w, L) => <rect x={-w/2} y={-L} width={w} height={L} rx={w/2} />,
+  },
+  pointer: {
+    label: 'Spitz',
+    draw: (w, L) => {
+      const b = w * 1.15;
+      const d =
+        `M ${-b/2} 0 L ${b/2} 0 ` +
+        `L ${w*0.28} ${-L*0.88} Q 0 ${-L} ${-w*0.28} ${-L*0.88} Z`;
+      return <path d={d} />;
+    },
+  },
+  arrow: {
+    label: 'Pfeil',
+    draw: (w, L) => {
+      const tipH = w * 2.6;
+      const d =
+        `M ${-w/2} 0 L ${w/2} 0 ` +
+        `L ${w/2} ${-(L - tipH)} L ${w*1.35} ${-(L - tipH)} ` +
+        `L 0 ${-L} L ${-w*1.35} ${-(L - tipH)} ` +
+        `L ${-w/2} ${-(L - tipH)} Z`;
+      return <path d={d} />;
+    },
+  },
+  disc: {
+    label: 'Scheibe',
+    draw: (w, L) => <>
+      <rect x={-w/2} y={-L} width={w} height={L} rx={w/2} />
+      <circle cx={0} cy={-L} r={w * 2.1} />
+    </>,
+  },
+  leaf: {
+    label: 'Blatt',
+    draw: (w, L) => {
+      const wide = w * 1.8;
+      const d =
+        `M 0 0 C ${wide} ${-L*0.25} ${w*0.5} ${-L*0.92} 0 ${-L} ` +
+        `C ${-w*0.5} ${-L*0.92} ${-wide} ${-L*0.25} 0 0 Z`;
+      return <path d={d} />;
+    },
+  },
+  dauphine: {
+    label: 'Dauphine',
+    draw: (w, L) => {
+      const shoulder = L * 0.58;
+      const wide = w * 1.25;
+      const d = `M 0 0 L ${wide} ${-shoulder} L 0 ${-L} L ${-wide} ${-shoulder} Z`;
+      return <path d={d} />;
+    },
+  },
+};
+
+function Hand({ shape, width, length, color, angle, transition, zIndex = 2 }) {
+  const S = HAND_SHAPES[shape] || HAND_SHAPES.slab;
+  // SVG is centred on the wrapper; viewBox extends far enough to show any
+  // shape's overhang (disc, arrow tip). overflow:visible keeps it lenient.
+  const pad = Math.max(width * 4, 14);
+  const side = length + pad * 2;
+  return (
+    <div style={{
+      position: 'absolute', left: '50%', top: '50%',
+      width: 0, height: 0, transformOrigin: '0 0',
+      transform: `rotate(${angle}deg)`, transition,
+      pointerEvents: 'none', zIndex,
+    }}>
+      <svg
+        width={side} height={side}
+        viewBox={`${-side/2} ${-side/2} ${side} ${side}`}
+        style={{
+          position: 'absolute',
+          left: -side/2, top: -side/2,
+          overflow: 'visible', pointerEvents: 'none',
+          filter: 'drop-shadow(0 1px 1.5px rgba(0,0,0,0.22))',
+        }}
+      >
+        <g fill={color} stroke="none">{S.draw(width, length)}</g>
+      </svg>
+    </div>
+  );
+}
+
+const HAND_KEY = 'uhrzeit.hands';
+const DEFAULT_HANDS = { hour: 'pointer', minute: 'arrow' };
+function useHands() {
+  const [h, setH] = React.useState(() => {
+    try {
+      const raw = localStorage.getItem(HAND_KEY);
+      const v = raw ? JSON.parse(raw) : null;
+      return v && HAND_SHAPES[v.hour] && HAND_SHAPES[v.minute] ? v : DEFAULT_HANDS;
+    } catch { return DEFAULT_HANDS; }
+  });
+  const set = (key, value) => {
+    setH(prev => {
+      const next = { ...prev, [key]: value };
+      try { localStorage.setItem(HAND_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
+  return { hands: h, setHourShape: v => set('hour', v), setMinuteShape: v => set('minute', v) };
+}
+
+function HandPreview({ shapeKey, selected, onClick, color, T }) {
+  const S = HAND_SHAPES[shapeKey];
+  return <button onClick={onClick} aria-label={S.label} title={S.label}
+    style={{
+      width: 34, height: 34, padding: 0,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: selected ? T.accentSoft : 'transparent',
+      border: selected ? `1.5px solid ${color}` : `1px solid ${T.ink}2b`,
+      borderRadius: 9, cursor: 'pointer',
+      transition: 'background .15s, border-color .15s',
+    }}>
+    <svg width="22" height="24" viewBox="-12 -22 24 25" overflow="visible" style={{ display: 'block' }}>
+      <g fill={color}>{S.draw(2.4, 18)}</g>
+      <circle cx="0" cy="0" r="1.8" fill={color} />
+    </svg>
+  </button>;
+}
+
+function SettingsPanel({ hands, setHourShape, setMinuteShape, T, accent, c, onClose }) {
+  const g = c.glass;
+  return <div style={{
+    margin: '8px 0 4px',
+    padding: '12px 14px',
+    borderRadius: 14,
+    background: g.fill, border: `1px solid ${g.edge}`,
+    boxShadow: `inset 0 1px 0 ${g.shine}, 0 1px 2px rgba(0,0,0,0.06), 0 8px 20px -8px rgba(0,0,0,0.14)`,
+    backdropFilter: 'blur(10px) saturate(140%)', WebkitBackdropFilter: 'blur(10px) saturate(140%)',
+  }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+      fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.2em',
+      textTransform: 'uppercase', color: c.soft, marginBottom: 8 }}>
+      <span>Zeigerformen</span>
+      <button onClick={onClose} aria-label="Schließen"
+        style={{ background: 'transparent', border: 0, color: c.soft, fontSize: 14, cursor: 'pointer', padding: 0 }}>×</button>
+    </div>
+    {[
+      { key: 'hour',   label: 'Stundenzeiger',   cur: hands.hour,   set: setHourShape,   color: T.enamelInk },
+      { key: 'minute', label: 'Minutenzeiger',   cur: hands.minute, set: setMinuteShape, color: accent },
+    ].map(row => (
+      <div key={row.key} style={{ marginBottom: row.key === 'hour' ? 10 : 0 }}>
+        <div style={{ fontFamily: 'Nunito, sans-serif', fontSize: 12, fontStyle: 'italic',
+          color: c.soft, marginBottom: 5 }}>{row.label}</div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {Object.keys(HAND_SHAPES).map(k =>
+            <HandPreview key={k} shapeKey={k}
+              selected={k === row.cur} onClick={() => row.set(k)}
+              color={row.color} T={T} />
+          )}
+        </div>
+      </div>
+    ))}
+  </div>;
+}
+
 const THEMES = {
-  sonne: {
-    label: 'Sonne', dark: false,
-    bgBase: '#fde884',
-    bgBlobs: [
-      blob('50% -10%',  'rgba(255,251,224,0.95)', '55%'),
-      blob('85% 15%',   'rgba(252,196,25,0.55)',  '45%'),
-      blob('10% 85%',   'rgba(245,159,0,0.35)',   '55%'),
-    ],
-    bgTexture: 0,
-    ink: '#2a2418', soft: '#8c826a', accent: '#e8590c',
-    accentSoft: 'rgba(232,89,12,0.22)', correct: '#3f7b0a', wrong: '#b91c1c',
-    enamel: '#fffdf3', enamelEdge: '#1f1a10', enamelInk: '#1f1a10',
-    tickMinor: 'rgba(31,26,16,0.45)',
-  },
-  nacht: {
-    label: 'Nacht', dark: true,
-    bgBase: '#070e1c',
-    bgBlobs: [
-      blob('80% 10%',  'rgba(91,156,245,0.35)', '55%'),
-      blob('15% 40%',  'rgba(45,80,135,0.55)',  '55%'),
-      blob('60% 95%',  'rgba(24,50,95,0.7)',    '55%'),
-    ],
-    bgTexture: 0,
-    ink: '#e8edf7', soft: '#8ba0c4', accent: '#5b9cf5',
-    accentSoft: 'rgba(91,156,245,0.22)', correct: '#86d39a', wrong: '#ff7b7b',
-    enamel: '#0d1830', enamelEdge: '#c0cce0', enamelInk: '#e8edf7',
-    tickMinor: 'rgba(232,237,247,0.32)',
-  },
-  bluete: {
-    label: 'Blüte', dark: false,
-    bgBase: '#ffe8a8',
-    bgBlobs: [
-      blob('20% 10%',  'rgba(255,179,208,0.85)', '55%'),
-      blob('85% 30%',  'rgba(255,228,135,0.75)', '50%'),
-      blob('50% 95%',  'rgba(225,59,123,0.25)',  '45%'),
-    ],
-    bgTexture: 0,
-    ink: '#5a1f3f', soft: '#a06b85', accent: '#e13b7b',
-    accentSoft: 'rgba(225,59,123,0.22)', correct: '#3f7b0a', wrong: '#b91c1c',
-    enamel: '#fffaf5', enamelEdge: '#5a1f3f', enamelInk: '#5a1f3f',
-    tickMinor: 'rgba(90,31,63,0.38)',
-  },
-  iris: {
-    label: 'Iris', dark: false,
-    bgBase: '#fce890',
-    bgBlobs: [
-      blob('20% 10%',  'rgba(139,95,191,0.7)',  '55%'),
-      blob('90% 25%',  'rgba(201,184,229,0.85)','45%'),
-      blob('55% 95%',  'rgba(252,232,144,0.9)', '55%'),
-    ],
-    bgTexture: 0,
-    ink: '#3e1f5c', soft: '#7d6ea5', accent: '#8b5fbf',
-    accentSoft: 'rgba(139,95,191,0.22)', correct: '#3f7b0a', wrong: '#b91c1c',
-    enamel: '#fdf9e7', enamelEdge: '#3e1f5c', enamelInk: '#3e1f5c',
-    tickMinor: 'rgba(62,31,92,0.38)',
-  },
-  nebel: {
-    label: 'Nebel', dark: false,
-    bgBase: '#e4e8ec',
-    bgBlobs: [
-      blob('15% 15%',  'rgba(120,165,170,0.45)', '55%'),
-      blob('80% 40%',  'rgba(200,210,220,0.9)',  '55%'),
-      blob('40% 90%',  'rgba(90,120,130,0.30)',  '55%'),
-    ],
-    bgTexture: 0.05,
-    ink: '#263238', soft: '#6b7a82', accent: '#2f7c8c',
-    accentSoft: 'rgba(47,124,140,0.22)', correct: '#3f7b0a', wrong: '#b91c1c',
-    enamel: '#fdfdfb', enamelEdge: '#263238', enamelInk: '#263238',
-    tickMinor: 'rgba(38,50,56,0.42)',
-  },
   koralle: {
     label: 'Koralle', dark: false,
     bgBase: '#fff1dc',
@@ -203,20 +294,6 @@ const THEMES = {
     enamel: '#fffaf0', enamelEdge: '#5b2a1c', enamelInk: '#5b2a1c',
     tickMinor: 'rgba(91,42,28,0.4)',
   },
-  minze: {
-    label: 'Minze', dark: false,
-    bgBase: '#f0faf4',
-    bgBlobs: [
-      blob('20% 20%',  'rgba(130,210,180,0.55)', '50%'),
-      blob('85% 70%',  'rgba(180,230,220,0.75)', '50%'),
-      blob('50% 100%', 'rgba(90,180,160,0.25)',  '50%'),
-    ],
-    bgTexture: 0,
-    ink: '#14362b', soft: '#5f877a', accent: '#1d8f6a',
-    accentSoft: 'rgba(29,143,106,0.22)', correct: '#3f7b0a', wrong: '#b91c1c',
-    enamel: '#fdfffc', enamelEdge: '#14362b', enamelInk: '#14362b',
-    tickMinor: 'rgba(20,54,43,0.38)',
-  },
   abend: {
     label: 'Abend', dark: true,
     bgBase: '#1a0f2e',
@@ -226,24 +303,10 @@ const THEMES = {
       blob('55% 15%',  'rgba(50,30,80,0.8)',    '60%'),
     ],
     bgTexture: 0,
-    ink: '#f3ecde', soft: '#b6a5c3', accent: '#ffb05a',
+    ink: '#f3ecde', soft: '#d2c2d9', accent: '#ffb05a',
     accentSoft: 'rgba(255,176,90,0.22)', correct: '#a8d98a', wrong: '#ff8080',
     enamel: '#231735', enamelEdge: '#d9c4a8', enamelInk: '#f3ecde',
-    tickMinor: 'rgba(243,236,222,0.32)',
-  },
-  wald: {
-    label: 'Wald', dark: false,
-    bgBase: '#e4ebdc',
-    bgBlobs: [
-      blob('25% 20%',  'rgba(112,140,70,0.55)',  '55%'),
-      blob('80% 60%',  'rgba(180,185,130,0.65)', '55%'),
-      blob('45% 95%',  'rgba(80,105,55,0.30)',   '60%'),
-    ],
-    bgTexture: 0.09,
-    ink: '#1f2a14', soft: '#627054', accent: '#5d8a2a',
-    accentSoft: 'rgba(93,138,42,0.22)', correct: '#3f7b0a', wrong: '#b91c1c',
-    enamel: '#fbfcf5', enamelEdge: '#1f2a14', enamelInk: '#1f2a14',
-    tickMinor: 'rgba(31,42,20,0.42)',
+    tickMinor: 'rgba(243,236,222,0.42)',
   },
 };
 
@@ -256,10 +319,10 @@ const THEME_KEY = 'uhrzeit.theme';
 
 function useTheme() {
   const [id, setId] = React.useState(() => {
-    try { const v = localStorage.getItem(THEME_KEY); return THEMES[v] ? v : 'sonne'; }
-    catch { return 'sonne'; }
+    try { const v = localStorage.getItem(THEME_KEY); return THEMES[v] ? v : 'koralle'; }
+    catch { return 'koralle'; }
   });
-  const T = THEMES[id] || THEMES.sonne;
+  const T = THEMES[id] || THEMES.koralle;
   React.useEffect(() => {
     try { localStorage.setItem(THEME_KEY, id); } catch {}
     const root = document.documentElement;
@@ -611,7 +674,19 @@ function Clock({
 
   const clockId = React.useMemo(() => 'c' + Math.random().toString(36).slice(2,8), []);
   const numSize = numeralSize || Math.round(size * 0.075);
-  const numR = R - numSize * 1.15;
+
+  // Size-proportional tick geometry — thicker 5-min marks, slim minute marks,
+  // slightly longer active tick. Swiss-rail-ish without copying the exact dial.
+  const tickTop = Math.round(size * 0.035);
+  const majorT = Math.max(2, Math.round(size * 0.013));
+  const minorT = Math.max(1, Math.round(size * 0.006));
+  const majorL = Math.round(size * 0.06);
+  const minorL = Math.round(size * 0.028);
+  // Numerals sit inside the tick ring with clearance for the glyph's height —
+  // otherwise "12" and "6" brush the 5-minute tick below/above them.
+  const tickInnerR = R - tickTop - majorL;
+  const numR = tickInnerR - numSize * 0.85;
+
   const numWhich = showNumerals === 'cardinals' ? [12,3,6,9] : (showNumerals ? [1,2,3,4,5,6,7,8,9,10,11,12] : []);
   const numerals = numWhich.map(i => {
     const ang = (i / 12) * 360;
@@ -628,13 +703,6 @@ function Clock({
       }}>{i}</div>
     );
   });
-
-  // Size-proportional tick geometry — thicker 5-min marks, slim minute marks,
-  // slightly longer active tick. Swiss-rail-ish without copying the exact dial.
-  const majorT = Math.max(2, Math.round(size * 0.013));
-  const minorT = Math.max(1, Math.round(size * 0.006));
-  const majorL = Math.round(size * 0.06);
-  const minorL = Math.round(size * 0.028);
 
   // The minute the hand is currently "pointing at" — highlighted so the
   // learner can read off the exact minute, especially in 1-min-precision
@@ -653,10 +721,10 @@ function Clock({
       : (major ? (theme.tickColor || '#1a1a1a') : (theme.tickMinor || 'rgba(0,0,0,0.32)'));
     ticks.push(
       <div key={i} data-nodrag style={{
-        position: 'absolute', left: '50%', top: Math.round(size * 0.035),
+        position: 'absolute', left: '50%', top: tickTop,
         width: thick, height: len,
         background: color,
-        transformOrigin: `${thick/2}px ${R - Math.round(size * 0.035)}px`,
+        transformOrigin: `${thick/2}px ${R - tickTop}px`,
         transform: `translateX(-50%) rotate(${rot}deg)`,
         borderRadius: 0.5, pointerEvents: 'none',
         transition: live ? 'none' : 'background .2s, height .2s, width .2s',
@@ -668,21 +736,11 @@ function Clock({
   const minLen  = Math.round(size * 0.40);
   const hourW = Math.max(5, Math.round(size * 0.028));
   const minW  = Math.max(3, Math.round(size * 0.018));
-  const discSize = Math.round(size * 0.08);
   // Transitions are off while actively dragging (live rotations update every
   // frame). After release, `live` clears, the render switches back to the
   // target angle — unwrapped to stay within 180° of the drag's last value —
   // and the transition animates the short arc to the snapped position.
   const transition = live ? 'none' : 'transform .55s cubic-bezier(.34,1.56,.64,1)';
-  const handWrapBase = {
-    position: 'absolute', left: '50%', top: '50%',
-    width: 0, height: 0,
-    transformOrigin: '0 0',
-    transition,
-    pointerEvents: 'none',
-    zIndex: 2,
-  };
-  const handShadow = '0 1px 2px rgba(0,0,0,0.22)';
 
   // Glass cover sheen — subtle diagonal specular + inner shadow ring, gives
   // the enamel face the feel of sitting under a clear glass lens.
@@ -721,37 +779,12 @@ function Clock({
       }} />
       {ticks}
       {numerals}
-      {/* Hour hand — thicker slab with rounded tip. */}
-      <div data-clock-id={clockId} data-clock-hand="hour" style={{
-        ...handWrapBase, transform: `rotate(${hourAng}deg)`,
-      }}>
-        <div style={{
-          position: 'absolute', width: hourW, height: hourLen,
-          left: -hourW/2, top: -hourLen,
-          background: theme.hourHand || '#1a1a1a',
-          borderRadius: hourW/2, boxShadow: handShadow,
-        }} />
-      </div>
-      {/* Minute hand — slim slab with a terminal disc (Swiss-rail DNA). */}
-      <div data-clock-id={clockId} data-clock-hand="minute" style={{
-        ...handWrapBase, transform: `rotate(${minAng}deg)`, zIndex: 3,
-      }}>
-        <div style={{
-          position: 'absolute', width: minW, height: minLen,
-          left: -minW/2, top: -minLen,
-          background: theme.minHand || '#e8590c',
-          borderRadius: minW/2, boxShadow: handShadow,
-        }} />
-        <div style={{
-          position: 'absolute', width: discSize, height: discSize,
-          left: -discSize/2, top: -minLen - discSize * 0.55,
-          background: theme.minHand || '#e8590c',
-          borderRadius: '50%',
-          boxShadow:
-            'inset 0 1px 0 rgba(255,255,255,0.35), inset 0 -1px 1px rgba(0,0,0,0.08), ' +
-            '0 1px 2px rgba(0,0,0,0.25)',
-        }} />
-      </div>
+      <Hand shape={theme.hourShape || 'pointer'} width={hourW} length={hourLen}
+        color={theme.hourHand || '#1a1a1a'}
+        angle={hourAng} transition={transition} zIndex={2} />
+      <Hand shape={theme.minuteShape || 'arrow'} width={minW} length={minLen}
+        color={theme.minHand || '#e8590c'}
+        angle={minAng} transition={transition} zIndex={3} />
       {/* Metallic pivot cap — small, highlit, seated between hand shadows and sheen. */}
       <div style={{
         position: 'absolute', left: '50%', top: '50%',
@@ -777,13 +810,20 @@ function LevelIcon({ tier, active, accent, ink, fillProgress = 0 }) {
   if (tier === 0) {
     const shade = Math.max(0, Math.min(1, fillProgress));
     const dotSize = Math.round(size * 0.55);
-    const bg = active ? accent : `rgba(232,89,12,${0.12 + shade * 0.55})`;
+    // Theme-aware: inactive dots sit on a tinted-accent fill that strengthens
+    // with fill progress; border drawn from theme ink so both light and dark
+    // themes keep the track legible.
+    const alpha = (0.30 + shade * 0.55);
+    const alphaHex = Math.round(alpha * 255).toString(16).padStart(2, '0');
+    const borderA = (0.30 + shade * 0.4);
+    const borderHex = Math.round(borderA * 255).toString(16).padStart(2, '0');
+    const bg = active ? accent : `${accent}${alphaHex}`;
     return <div style={{ width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{
         width: dotSize, height: dotSize, borderRadius: '50%',
         background: bg,
-        border: active ? `2px solid ${accent}` : `1px solid rgba(42,36,24,${0.2 + shade * 0.3})`,
-        boxShadow: active ? `0 2px 6px rgba(232,89,12,0.35)` : 'none',
+        border: active ? `2px solid ${accent}` : `1px solid ${ink}${borderHex}`,
+        boxShadow: active ? `0 2px 6px ${accent}66` : 'none',
         transition: 'all .2s',
       }} />
     </div>;
@@ -823,7 +863,7 @@ function LevelIcon({ tier, active, accent, ink, fillProgress = 0 }) {
 // ============================================================
 // LEVEL TRACK
 // ============================================================
-function LevelTrack({ levelId, setLevelId, mastery, accent, ink, soft }) {
+function LevelTrack({ levelId, setLevelId, mastery, accent, ink, soft, trackBg }) {
   const trackRef = React.useRef(null);
   const [drag, setDrag] = React.useState(false);
 
@@ -878,7 +918,7 @@ function LevelTrack({ levelId, setLevelId, mastery, accent, ink, soft }) {
         onMouseDown={onDown} onTouchStart={onDown}
         style={{ position: 'relative', height: 44, cursor: 'pointer', touchAction: 'none', marginTop: 10 }}>
         <div style={{ position: 'absolute', left: 14, right: 14, top: 20, height: 2,
-          background: `${ink}2b`, borderRadius: 1 }} />
+          background: trackBg || `${ink}2b`, borderRadius: 1 }} />
         <div style={{ position: 'absolute', left: 14,
           width: `calc(${pct}% * (100% - 28px) / 100%)`, top: 20, height: 2,
           background: accent, borderRadius: 1, transition: drag ? 'none' : 'width .25s' }} />
@@ -1179,9 +1219,84 @@ function ResetIcon({ onReset, c, soft }) {
 // ============================================================
 // MAIN APP
 // ============================================================
+// Small glass icon button — gear / palette / anything else we park in the header.
+function HeaderIconButton({ onClick, ariaLabel, active, c, children }) {
+  return <button onClick={onClick} aria-label={ariaLabel} title={ariaLabel}
+    style={{
+      width: 26, height: 26, padding: 0, flexShrink: 0,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: active ? c.ink : c.glass.fill,
+      color: active ? c.paper : c.soft,
+      border: `1px solid ${active ? c.ink : c.glass.edge}`,
+      borderRadius: '50%', cursor: 'pointer',
+      boxShadow: `inset 0 1px 0 ${c.glass.shine}, 0 1px 2px rgba(0,0,0,0.08)`,
+      backdropFilter: 'blur(8px) saturate(140%)',
+      WebkitBackdropFilter: 'blur(8px) saturate(140%)',
+      transition: 'background .15s, color .15s, border-color .15s',
+    }}>{children}</button>;
+}
+
+// Small analog clock logo showing the current wall-clock time. Purely
+// decorative — not interactive, no numerals, subtle enamel face.
+function NowLogo({ size = 36, T, accent }) {
+  const [t, setT] = React.useState(() => new Date());
+  React.useEffect(() => {
+    const id = setInterval(() => setT(new Date()), 15000);
+    return () => clearInterval(id);
+  }, []);
+  const h = t.getHours() % 12;
+  const m = t.getMinutes();
+  const hourAng = h * 30 + m * 0.5;
+  const minAng  = m * 6;
+  const R = size / 2;
+  return <div aria-label="Aktuelle Uhrzeit" title={`${String(t.getHours()).padStart(2,'0')}:${String(m).padStart(2,'0')}`}
+    style={{ width: size, height: size, position: 'relative', flexShrink: 0 }}>
+    <div style={{
+      position: 'absolute', inset: 0, borderRadius: '50%',
+      background: T.enamel, border: `1.2px solid ${T.enamelEdge}`,
+      boxShadow: 'inset 0 1px 1.5px rgba(255,255,255,0.5), 0 1px 2px rgba(0,0,0,0.12), 0 4px 10px -4px rgba(0,0,0,0.18)',
+    }} />
+    {[0,3,6,9].map(i => {
+      const a = (i / 12) * 360;
+      const rad = (a - 90) * Math.PI / 180;
+      const len = size * 0.13;
+      const inner = R - len;
+      const x1 = R + inner * Math.cos(rad), y1 = R + inner * Math.sin(rad);
+      const x2 = R + (R - 2) * Math.cos(rad), y2 = R + (R - 2) * Math.sin(rad);
+      return <svg key={i} width={size} height={size}
+        style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+        <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={T.enamelInk} strokeWidth="1.2" strokeLinecap="round"/>
+      </svg>;
+    })}
+    <div style={{
+      position: 'absolute', left: '50%', top: '50%',
+      width: 0, height: 0, transformOrigin: '0 0',
+      transform: `rotate(${hourAng}deg)`,
+    }}>
+      <div style={{ position: 'absolute', width: 2, height: size * 0.27,
+        left: -1, top: -size * 0.27, background: T.enamelInk, borderRadius: 1 }} />
+    </div>
+    <div style={{
+      position: 'absolute', left: '50%', top: '50%',
+      width: 0, height: 0, transformOrigin: '0 0',
+      transform: `rotate(${minAng}deg)`,
+    }}>
+      <div style={{ position: 'absolute', width: 1.4, height: size * 0.38,
+        left: -0.7, top: -size * 0.38, background: accent, borderRadius: 1 }} />
+    </div>
+    <div style={{
+      position: 'absolute', left: '50%', top: '50%',
+      width: 3, height: 3, margin: '-1.5px 0 0 -1.5px',
+      background: T.enamelInk, borderRadius: '50%',
+    }} />
+  </div>;
+}
+
 function UhrzeitApp() {
   const { mastery, record, reset } = useMastery();
   const { id: themeId, setId: setThemeId, T } = useTheme();
+  const { hands, setHourShape, setMinuteShape } = useHands();
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [levelId, setLevelId] = React.useState(() => {
     try { return parseInt(localStorage.getItem(LEVEL_KEY) || '0', 10) || 0; }
     catch { return 0; }
@@ -1212,6 +1327,7 @@ function UhrzeitApp() {
     numeral: T.enamelInk, hourHand: T.enamelInk, minHand: accent,
     tickColor: T.enamelInk, tickMinor: T.tickMinor, pivot: T.enamelInk,
     tickActive: accent,
+    hourShape: hands.hour, minuteShape: hands.minute,
     dark: !!T.dark,
   };
 
@@ -1226,20 +1342,27 @@ function UhrzeitApp() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10,
           fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.2em',
           textTransform: 'uppercase', color: c.soft }}>
-          <span>№ {String(S.qIndex+1).padStart(2,'0')} / {String(S.roundN).padStart(2,'0')}</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <NowLogo size={34} T={T} accent={accent} />
+            <span>№ {String(S.qIndex+1).padStart(2,'0')} / {String(S.roundN).padStart(2,'0')}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span>{S.score} Pkt · <span style={{ color: accent }}>{S.streak}↑</span></span>
+            <ThemePicker id={themeId} setId={setThemeId} T={T} />
+            <HeaderIconButton c={c} active={settingsOpen}
+              ariaLabel={settingsOpen ? 'Einstellungen schließen' : 'Einstellungen'}
+              onClick={() => setSettingsOpen(v => !v)}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+              </svg>
+            </HeaderIconButton>
             <ResetIcon onReset={handleReset} c={c} soft={c.soft} />
           </div>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end',
-          gap: 12, marginTop: 4 }}>
-          <div style={{ fontFamily: 'Fredoka, sans-serif', fontWeight: 600, fontSize: 30,
-            lineHeight: 1, color: c.ink, letterSpacing: '-0.02em' }}>
-            Die Uhrzeit
-          </div>
-          <ThemePicker id={themeId} setId={setThemeId} T={T} />
-        </div>
+        {settingsOpen && <SettingsPanel hands={hands} setHourShape={setHourShape}
+          setMinuteShape={setMinuteShape} T={T} accent={accent} c={c}
+          onClose={() => setSettingsOpen(false)} />}
 
         <div style={{ display: 'flex', gap: 3, marginTop: 10 }}>
           {Array.from({length: S.roundN}, (_,i) => {
@@ -1251,7 +1374,8 @@ function UhrzeitApp() {
 
         <div style={{ marginTop: 16 }}>
           <LevelTrack levelId={levelId} setLevelId={setLevelId} mastery={mastery}
-            accent={accent} ink={c.ink} soft={c.soft} />
+            accent={accent} ink={c.ink} soft={c.soft}
+            trackBg={T.dark ? `${c.ink}5a` : `${c.ink}2b`} />
         </div>
 
         {S.complete ?
