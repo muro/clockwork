@@ -794,9 +794,74 @@ function optionButtonStyle(state, c, font, shape) {
   };
 }
 
+// Same responsive clock size + same prompt-slot height across every mode, so
+// the clock neither resizes nor jumps when switching between lesen/stellen.
+// Derived from the viewport so it still scales on different phones.
+function useClockSize() {
+  const get = () => Math.min(230, Math.max(180, Math.floor((typeof window !== 'undefined' ? window.innerWidth : 360) - 60)));
+  const [size, setSize] = React.useState(get);
+  React.useEffect(() => {
+    const onR = () => setSize(get());
+    window.addEventListener('resize', onR);
+    window.addEventListener('orientationchange', onR);
+    return () => {
+      window.removeEventListener('resize', onR);
+      window.removeEventListener('orientationchange', onR);
+    };
+  }, []);
+  return size;
+}
+
 function Body({ S, actions, level, c, theme, font, labelFont, accent }) {
   if (!S.question) return null;
   const { h, m } = S.question;
+  const clockSize = useClockSize();
+  const isRead = level.mode === 'lesen' || level.mode === 'wort-lesen';
+  const isWord = level.mode === 'wort-lesen' || level.mode === 'wort-stellen';
+
+  // Prompt slot — fixed min-height so the clock sits at the same Y in every
+  // mode. Content is flex-end-aligned: modes with only a small label leave
+  // space above empty; modes with a big digital/word prompt fill it.
+  const promptMinHeight = 92;
+  const labelText =
+    level.mode === 'lesen'      ? `Wie spät ist es?${level.hour24 ? ' · 24h' : ''}` :
+    level.mode === 'wort-lesen' ? 'Welcher Satz passt?' :
+    `Stelle die Uhr auf${!isWord && level.hour24 ? ' · 24h' : ''}`;
+
+  const prompt = (
+    <div style={{
+      minHeight: promptMinHeight, textAlign: 'center',
+      display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
+      gap: 6, padding: '6px 0 8px',
+    }}>
+      <div style={{ fontFamily: labelFont + ', monospace', fontSize: 10,
+        letterSpacing: '0.22em', textTransform: 'uppercase', color: c.soft }}>
+        {labelText}
+      </div>
+      {level.mode === 'stellen' && (
+        <div style={{ fontFamily: font, fontWeight: 600, fontSize: 64,
+          color: accent, letterSpacing: '-0.03em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+          {digitalFromQ(S.question)}
+        </div>
+      )}
+      {level.mode === 'wort-stellen' && (
+        <div style={{ fontFamily: font, fontWeight: 600, fontSize: 28,
+          color: accent, letterSpacing: '-0.015em', lineHeight: 1.15, padding: '0 6px' }}>
+          {wordFromQ(S.question)}
+        </div>
+      )}
+    </div>
+  );
+
+  const clockBlock = (
+    <div style={{ display: 'flex', justifyContent: 'center', margin: '10px 0 12px' }}>
+      <Clock theme={theme} size={clockSize}
+        h={isRead ? h : S.setH} m={isRead ? m : S.setM}
+        interactive={!isRead && !S.locked} activeHand={S.activeHand}
+        onSetAngle={actions.setHandAngle} onPickHand={actions.setActiveHand}
+        numeralFont={font} numeralWeight={500} />
+    </div>
+  );
 
   if (level.mode === 'lesen') {
     const correct = digitalFromQ(S.question);
@@ -804,20 +869,14 @@ function Body({ S, actions, level, c, theme, font, labelFont, accent }) {
                         : v === correct ? 'correct' : v === S.selected ? 'wrong' : 'faded';
     return (
       <>
-        <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0 16px' }}>
-          <Clock theme={theme} size={230} h={h} m={m} numeralFont={font} numeralWeight={500} />
-        </div>
-        <div style={{ fontFamily: 'Nunito, sans-serif', fontStyle: 'italic',
-          fontSize: 14, color: c.soft, marginBottom: 12, textAlign: 'center' }}>
-          Wie spät ist es?{level.hour24 ? ' (24-Stunden)' : ''}
-        </div>
+        {prompt}
+        {clockBlock}
         <div data-testid="options" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           {S.options.map(o =>
             <button key={o} onClick={() => actions.pickOption(o)} style={optionButtonStyle(stOf(o), c, font, 'pill')}>{o}</button>
           )}
         </div>
         <Feedback c={c} S={S} />
-        {/* Auto-advance handles this; no manual "Weiter" needed. */}
       </>
     );
   }
@@ -828,53 +887,25 @@ function Body({ S, actions, level, c, theme, font, labelFont, accent }) {
                         : v === correctWord ? 'correct' : v === S.selected ? 'wrong' : 'faded';
     return (
       <>
-        <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0 14px' }}>
-          <Clock theme={theme} size={210} h={h} m={m} numeralFont={font} numeralWeight={500} />
-        </div>
-        <div style={{ fontFamily: 'Nunito, sans-serif', fontStyle: 'italic',
-          fontSize: 14, color: c.soft, marginBottom: 10, textAlign: 'center' }}>
-          Welcher Satz passt?
-        </div>
+        {prompt}
+        {clockBlock}
         <div data-testid="options" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 8 }}>
           {S.options.map(o =>
             <button key={o} onClick={() => actions.pickOption(o)} style={optionButtonStyle(stOf(o), c, font, 'row')}>{o}</button>
           )}
         </div>
         <Feedback c={c} S={S} />
-        {/* Auto-advance handles this; no manual "Weiter" needed. */}
       </>
     );
   }
 
-  // stellen / wort-stellen
-  const isWord = level.mode === 'wort-stellen';
+  // stellen / wort-stellen — prompt carries the target time/phrase above,
+  // clock is interactive below. No options grid.
   return (
     <>
-      <div style={{ padding: isWord ? '10px 0 14px' : '12px 0 12px', textAlign: 'center' }}>
-        <div style={{ fontFamily: labelFont + ', monospace', fontSize: 10, letterSpacing: '0.22em',
-          textTransform: 'uppercase', color: c.soft, marginBottom: 6 }}>
-          Stelle die Uhr auf{!isWord && level.hour24 ? ' (24h)' : ''}
-        </div>
-        {isWord ? (
-          <div style={{ fontFamily: font, fontWeight: 600, fontSize: 28,
-            color: accent, letterSpacing: '-0.015em', lineHeight: 1.15, padding: '0 6px' }}>
-            {wordFromQ(S.question)}
-          </div>
-        ) : (
-          <div style={{ fontFamily: font, fontWeight: 600, fontSize: 64,
-            color: accent, letterSpacing: '-0.03em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
-            {digitalFromQ(S.question)}
-          </div>
-        )}
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'center', margin: '4px 0 10px' }}>
-        <Clock theme={theme} size={220} h={S.setH} m={S.setM}
-          interactive={!S.locked} activeHand={S.activeHand}
-          onSetAngle={actions.setHandAngle} onPickHand={actions.setActiveHand}
-          numeralFont={font} numeralWeight={500} />
-      </div>
+      {prompt}
+      {clockBlock}
       <Feedback c={c} S={S} />
-      {/* No Prüfen button — hands auto-submit after idle, advance auto-fires. */}
     </>
   );
 }
