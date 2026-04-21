@@ -315,17 +315,23 @@ function useClockGame({ levelId = 0, roundN = 10, onMilestone, onRoundDone } = {
   const S = ref.current;
   S.levelId = levelId; S.roundN = roundN; S.level = level;
 
-  const isWord = (level.mode === "wort-lesen" || level.mode === "wort-stellen");
-  const isSet  = (level.mode === "stellen" || level.mode === "wort-stellen");
+  // Review levels pick a mode per draw, so these predicates must key off the
+  // *current question*, not the level. Plain levels pre-stamp q.mode anyway.
+  const qMode = () => S.question?.mode || level.mode;
+  const isWord = () => { const m = qMode(); return m === "wort-lesen" || m === "wort-stellen"; };
+  const isSet  = () => { const m = qMode(); return m === "stellen"    || m === "wort-stellen"; };
 
   const newQuestion = () => {
     clearTimeout(S.autoSubmitTimer); S.autoSubmitTimer = null;
     S.question = makeQuestion(level);
     S.selected = null; S.locked = false;
     S.feedback = null; S.feedbackKind = null;
-    if (isSet) { S.setH = 12; S.setM = 0; S.activeHand = "minute"; }
-    if (level.mode === "lesen")      Object.assign(S, buildDigitalOptions(S.question, level));
-    if (level.mode === "wort-lesen") Object.assign(S, buildWordOptions(S.question, level));
+    const mode = S.question.mode;
+    if (mode === "stellen" || mode === "wort-stellen") {
+      S.setH = 12; S.setM = 0; S.activeHand = "minute";
+    }
+    if (mode === "lesen")      Object.assign(S, buildDigitalOptions(S.question, level));
+    if (mode === "wort-lesen") Object.assign(S, buildWordOptions(S.question, level));
     refresh();
   };
 
@@ -350,11 +356,11 @@ function useClockGame({ levelId = 0, roundN = 10, onMilestone, onRoundDone } = {
       S.feedbackKind = "correct";
     } else {
       S.streak = 0;
-      S.feedback = isWord
+      S.feedback = isWord()
         ? `Richtig: ${wordFromQ(S.question)}.`
         : `Richtig: ${digitalFromQ(S.question)}.`;
       S.feedbackKind = "wrong";
-      if (isSet) { S.setH = S.question.h; S.setM = S.question.m; }
+      if (isSet()) { S.setH = S.question.h; S.setM = S.question.m; }
     }
     S.round.push(ok);
     if (ok && (S.streak === 5 || S.streak === 10) && S.streak !== S.lastMilestone) {
@@ -383,7 +389,7 @@ function useClockGame({ levelId = 0, roundN = 10, onMilestone, onRoundDone } = {
     if (S.locked) return;
     S.selected = val;
     refresh();
-    const correct = level.mode === "wort-lesen" ? wordFromQ(S.question) : digitalFromQ(S.question);
+    const correct = qMode() === "wort-lesen" ? wordFromQ(S.question) : digitalFromQ(S.question);
     finishQuestion(val === correct);
   };
 
@@ -427,7 +433,7 @@ function useClockGame({ levelId = 0, roundN = 10, onMilestone, onRoundDone } = {
     }
     refresh();
     // Stellen modes auto-submit once the hands stop moving.
-    if (isSet) scheduleAutoSubmit();
+    if (isSet()) scheduleAutoSubmit();
   };
   // Picking up a hand counts as "still working" — cancel any pending submit.
   const setActiveHand = (h) => { cancelAutoSubmit(); S.activeHand = h; refresh(); };
@@ -745,8 +751,29 @@ function Clock({
 // ============================================================
 // GROWTH ICONS — tier 0..3 (dot / sprout / bud / daffodil)
 // ============================================================
-function LevelIcon({ tier, active, accent, ink, paper, fillProgress = 0 }) {
+function LevelIcon({ tier, active, accent, ink, paper, fillProgress = 0, review = false }) {
   const size = active ? 28 : 22;
+  // Review stops render a distinct "rosette" medallion instead of the growth
+  // icons. Mastery is shown by the centre fill; the surrounding dot-ring
+  // flags the stop as a checkpoint at a glance.
+  if (review) {
+    const box = size + 10;
+    const ringActive = tier >= 1 || active;
+    const dotColor = ringActive ? accent : `${ink}55`;
+    return <svg width={box} height={box} viewBox="0 0 32 32" style={{ display: 'block' }}>
+      {Array.from({ length: 8 }, (_, i) => (i / 8) * 360).map(a => {
+        const rad = (a - 90) * Math.PI / 180;
+        const cx = 16 + 11 * Math.cos(rad);
+        const cy = 16 + 11 * Math.sin(rad);
+        return <circle key={a} cx={cx} cy={cy} r="1.6" fill={dotColor} />;
+      })}
+      <circle cx="16" cy="16" r="6.5" fill={paper}
+        stroke={active ? accent : `${ink}55`} strokeWidth={active ? 2 : 1.2}/>
+      {tier >= 1 && <circle cx="16" cy="16" r="4" fill={accent}/>}
+      {tier >= 2 && <circle cx="14" cy="14" r="1.6" fill={paper} opacity="0.85"/>}
+      {tier === 3 && <circle cx="16" cy="16" r="2" fill={paper}/>}
+    </svg>;
+  }
   if (tier === 0) {
     const shade = Math.max(0, Math.min(1, fillProgress));
     const dotSize = Math.round(size * 0.55);
@@ -881,6 +908,7 @@ function LevelTrack({ levelId, setLevelId, mastery, accent, ink, soft, trackBg, 
                 cursor: 'pointer', zIndex: active ? 3 : 2,
               }}>
               <LevelIcon tier={tier} active={active} accent={accent} ink={ink} paper={paper}
+                review={!!lv.review}
                 fillProgress={(mastery[i]?.best ?? 0) / 7} />
             </div>
           );
@@ -974,16 +1002,20 @@ function Body({ S, actions, level, c, theme, font, labelFont, accent }) {
   if (!S.question) return null;
   const { h, m } = S.question;
   const clockSize = useClockSize();
-  const isRead = level.mode === 'lesen' || level.mode === 'wort-lesen';
-  const isWord = level.mode === 'wort-lesen' || level.mode === 'wort-stellen';
+  // Review levels roll a new mode per question, so Body reads it off the
+  // question, not the level. Plain levels stamp the level's mode on the
+  // question, so the same lookup works for both.
+  const mode = S.question.mode || level.mode;
+  const isRead = mode === 'lesen' || mode === 'wort-lesen';
+  const isWord = mode === 'wort-lesen' || mode === 'wort-stellen';
 
   // Prompt slot — fixed min-height so the clock sits at the same Y in every
   // mode. Content is flex-end-aligned: modes with only a small label leave
   // space above empty; modes with a big digital/word prompt fill it.
   const promptMinHeight = 92;
   const labelText =
-    level.mode === 'lesen'      ? `Wie spät ist es?${level.hour24 ? ' · 24h' : ''}` :
-    level.mode === 'wort-lesen' ? 'Welcher Satz passt?' :
+    mode === 'lesen'      ? `Wie spät ist es?${level.hour24 ? ' · 24h' : ''}` :
+    mode === 'wort-lesen' ? 'Welcher Satz passt?' :
     `Stelle die Uhr auf${!isWord && level.hour24 ? ' · 24h' : ''}`;
 
   const prompt = (
@@ -996,13 +1028,13 @@ function Body({ S, actions, level, c, theme, font, labelFont, accent }) {
         letterSpacing: '0.22em', textTransform: 'uppercase', color: c.soft }}>
         {labelText}
       </div>
-      {level.mode === 'stellen' && (
+      {mode === 'stellen' && (
         <div style={{ fontFamily: font, fontWeight: 600, fontSize: 64,
           color: accent, letterSpacing: '-0.03em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
           {digitalFromQ(S.question)}
         </div>
       )}
-      {level.mode === 'wort-stellen' && (
+      {mode === 'wort-stellen' && (
         <div style={{ fontFamily: font, fontWeight: 600, fontSize: 28,
           color: accent, letterSpacing: '-0.015em', lineHeight: 1.15, padding: '0 6px' }}>
           {wordFromQ(S.question)}
@@ -1011,12 +1043,17 @@ function Body({ S, actions, level, c, theme, font, labelFont, accent }) {
     </div>
   );
 
+  // Minute-precision highlight only applies on the pure minute levels. Review
+  // levels may draw an arbitrary 5-min mark but land on a major tick, so the
+  // accent highlight would just be noise there.
+  const highlight = level.minuteSet === 'minute';
+
   const clockBlock = (
     <div style={{ display: 'flex', justifyContent: 'center', margin: '10px 0 12px' }}>
       <div style={{ position: 'relative', width: clockSize, height: clockSize }}>
         <Clock theme={theme} size={clockSize}
           h={isRead ? h : S.setH} m={isRead ? m : S.setM}
-          highlightMinute={level.minuteSet === 'minute'}
+          highlightMinute={highlight}
           interactive={!isRead && !S.locked} activeHand={S.activeHand}
           onSetAngle={actions.setHandAngle} onPickHand={actions.setActiveHand}
           numeralFont={font} numeralWeight={500} />
@@ -1035,7 +1072,7 @@ function Body({ S, actions, level, c, theme, font, labelFont, accent }) {
     </div>
   );
 
-  if (level.mode === 'lesen') {
+  if (mode === 'lesen') {
     const correct = digitalFromQ(S.question);
     const stOf = (v) => !S.locked ? (S.selected === v ? 'selected' : '')
                         : v === correct ? 'correct' : v === S.selected ? 'wrong' : 'faded';
@@ -1053,7 +1090,7 @@ function Body({ S, actions, level, c, theme, font, labelFont, accent }) {
     );
   }
 
-  if (level.mode === 'wort-lesen') {
+  if (mode === 'wort-lesen') {
     const correctWord = wordFromQ(S.question);
     const stOf = (v) => !S.locked ? (S.selected === v ? 'selected' : '')
                         : v === correctWord ? 'correct' : v === S.selected ? 'wrong' : 'faded';

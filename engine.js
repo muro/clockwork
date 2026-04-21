@@ -31,16 +31,40 @@ function digitalStr(h, m) { return `${h}:${String(m).padStart(2, "0")}`; }
 function digitalFromQ(q) { const hh = q.dh ?? q.h; return `${hh}:${String(q.m).padStart(2, "0")}`; }
 function wordFromQ(q) { return q.parsed.fullWord; }
 
+// Each entry holds only the *new* minutes introduced at that learning level.
+// Review levels union several sets to sweep the cumulative skill.
 const MINUTE_SETS = {
   volle:   [0],
-  halbe:   [0, 30],
-  viertel: [0, 15, 30, 45],
-  fuenf:   [0,5,10,15,20,25,30,35,40,45,50,55],
-  minute:  Array.from({ length: 60 }, (_, i) => i),
+  halbe:   [30],
+  viertel: [15, 45],
+  fuenf:   [5, 10, 20, 25, 35, 40, 50, 55],
+  minute:  Array.from({ length: 60 }, (_, i) => i).filter(m => m % 5 !== 0),
 };
+
+// Resolve a level's effective minute pool. A normal level carries a single
+// minuteSet; a review level carries a minuteSets array and we union the
+// corresponding pools. Sorted ascending for deterministic test output.
+function effectiveMinutes(level) {
+  const keys = level.minuteSets || [level.minuteSet];
+  const set = new Set();
+  for (const k of keys) for (const m of (MINUTE_SETS[k] || [])) set.add(m);
+  return [...set].sort((a, b) => a - b);
+}
+
+// Resolve the mode for a question. Normal levels have a scalar .mode; review
+// levels have a .modes array and pick one per question.
+function pickMode(level, rand = Math.random) {
+  if (level.modes && level.modes.length) {
+    return level.modes[Math.floor(rand() * level.modes.length)];
+  }
+  return level.mode;
+}
 
 // modes: lesen (clock→digital), stellen (digital→clock),
 //        wort-lesen (clock→phrase), wort-stellen (phrase→clock)
+// Review levels (review: true) carry `modes` + `minuteSets` arrays; a random
+// mode is picked per question and the minute is drawn from the union.
+const ALL_MODES = ['lesen', 'stellen', 'wort-lesen', 'wort-stellen'];
 const LEVELS = [
   { id: 0,  mode: "lesen",        minuteSet: "volle",   hour24: false, title: "Volle Stunden",      sub: "Uhr ablesen · :00" },
   { id: 1,  mode: "stellen",      minuteSet: "volle",   hour24: false, title: "Volle stellen",      sub: "Uhr stellen · :00" },
@@ -52,14 +76,18 @@ const LEVELS = [
   { id: 7,  mode: "wort-lesen",   minuteSet: "viertel", hour24: false, title: "Viertel · Wörter",   sub: "Welcher Satz passt?" },
   { id: 8,  mode: "wort-stellen", minuteSet: "viertel", hour24: false, title: "Viertel · stellen",  sub: "Satz zur Uhr" },
   { id: 9,  mode: "stellen",      minuteSet: "viertel", hour24: false, title: "Viertel stellen",    sub: "Uhr stellen · :15, :45" },
-  { id: 10, mode: "lesen",        minuteSet: "fuenf",   hour24: false, title: "5-Minuten",          sub: "Uhr ablesen · alle 5" },
-  { id: 11, mode: "wort-lesen",   minuteSet: "fuenf",   hour24: false, title: "5-Min. · Wörter",    sub: "Welcher Satz passt?" },
-  { id: 12, mode: "wort-stellen", minuteSet: "fuenf",   hour24: false, title: "5-Min. · stellen",   sub: "Satz zur Uhr" },
-  { id: 13, mode: "stellen",      minuteSet: "fuenf",   hour24: false, title: "5-Min. stellen",     sub: "Uhr stellen · alle 5" },
-  { id: 14, mode: "lesen",        minuteSet: "fuenf",   hour24: true,  title: "24 Stunden",         sub: "Uhr ablesen · 24h" },
-  { id: 15, mode: "stellen",      minuteSet: "fuenf",   hour24: true,  title: "24h stellen",        sub: "Uhr stellen · 24h" },
-  { id: 16, mode: "lesen",        minuteSet: "minute",  hour24: false, title: "Minutengenau",       sub: "Uhr ablesen · jede Minute" },
-  { id: 17, mode: "stellen",      minuteSet: "minute",  hour24: false, title: "Minutengenau stellen", sub: "Uhr stellen · jede Minute" },
+  { id: 10, review: true, modes: ALL_MODES, minuteSets: ["volle", "halbe", "viertel"],
+    hour24: false, title: "Wiederholung · bis Viertel", sub: "Alles Gelernte gemischt" },
+  { id: 11, mode: "lesen",        minuteSet: "fuenf",   hour24: false, title: "5-Minuten",          sub: "Uhr ablesen · alle 5" },
+  { id: 12, mode: "wort-lesen",   minuteSet: "fuenf",   hour24: false, title: "5-Min. · Wörter",    sub: "Welcher Satz passt?" },
+  { id: 13, mode: "wort-stellen", minuteSet: "fuenf",   hour24: false, title: "5-Min. · stellen",   sub: "Satz zur Uhr" },
+  { id: 14, mode: "stellen",      minuteSet: "fuenf",   hour24: false, title: "5-Min. stellen",     sub: "Uhr stellen · alle 5" },
+  { id: 15, review: true, modes: ALL_MODES, minuteSets: ["volle", "halbe", "viertel", "fuenf"],
+    hour24: false, title: "Wiederholung · bis 5-Min.", sub: "Alles Gelernte gemischt" },
+  { id: 16, mode: "lesen",        minuteSet: "fuenf",   hour24: true,  title: "24 Stunden",         sub: "Uhr ablesen · 24h" },
+  { id: 17, mode: "stellen",      minuteSet: "fuenf",   hour24: true,  title: "24h stellen",        sub: "Uhr stellen · 24h" },
+  { id: 18, mode: "lesen",        minuteSet: "minute",  hour24: false, title: "Minutengenau",       sub: "Uhr ablesen · jede Minute" },
+  { id: 19, mode: "stellen",      minuteSet: "minute",  hour24: false, title: "Minutengenau stellen", sub: "Uhr stellen · jede Minute" },
 ];
 
 function pickRandom(a){ return a[Math.floor(Math.random()*a.length)]; }
@@ -68,7 +96,7 @@ function shuffle(a){ a = a.slice(); for(let i=a.length-1;i>0;i--){const j=Math.f
 function buildDigitalOptions(q, level) {
   const correct = digitalFromQ(q);
   const opts = new Set([correct]);
-  const mins = MINUTE_SETS[level.minuteSet];
+  const mins = effectiveMinutes(level);
 
   if (level.hour24) {
     // In 24h mode, the clock face can't distinguish AM from PM — so a
@@ -148,7 +176,7 @@ function buildWordOptions(q, level) {
   if (parsed.minute === "5 vor halb") opts.add(parseTime(next, 35).fullWord);
   if (parsed.minute === "5 nach halb") opts.add(parseTime(next, 25).fullWord);
 
-  const mins = MINUTE_SETS[level.minuteSet].filter(x => x !== 0);
+  const mins = effectiveMinutes(level).filter(x => x !== 0);
   let guard = 0;
   while (opts.size < 4 && guard++ < 60) {
     const rh = 1 + Math.floor(Math.random()*12);
@@ -188,20 +216,21 @@ function snapToAllowedMinutes(ang, allowedMinutes) {
 const QUARTER_GRID = [0, 15, 30, 45];
 const FUENF_GRID   = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
 function minuteSnapGrid(level) {
-  switch (level.minuteSet) {
-    case 'volle':
-    case 'halbe':
-    case 'viertel': return QUARTER_GRID;
-    case 'fuenf':   return FUENF_GRID;
-    case 'minute':  return null;  // every minute — fall through to 6° rounding
-    default:        return null;
+  // Review levels inherit the finest-resolution grid their union touches, so
+  // the hand can land on any minute the review might ask about.
+  const keys = level.minuteSets || [level.minuteSet];
+  if (keys.includes('minute')) return null;
+  if (keys.includes('fuenf'))  return FUENF_GRID;
+  if (keys.includes('volle') || keys.includes('halbe') || keys.includes('viertel')) {
+    return QUARTER_GRID;
   }
+  return null;
 }
 
 // Build a question for a level — used by the game hook and tests.
 function makeQuestion(level, rand = Math.random) {
   const h = 1 + Math.floor(rand()*12);
-  const mins = MINUTE_SETS[level.minuteSet];
+  const mins = effectiveMinutes(level);
   const m = mins[Math.floor(rand()*mins.length)];
   let dh = h;
   if (level.hour24) {
@@ -210,18 +239,47 @@ function makeQuestion(level, rand = Math.random) {
     // only PM here keeps every question in the "new" half-day.
     dh = h === 12 ? 12 : h + 12;
   }
-  return { h, m, dh, parsed: parseTime(h, m) };
+  const mode = pickMode(level, rand);
+  return { h, m, dh, mode, parsed: parseTime(h, m) };
 }
 
 // ============================================================
 // MASTERY / localStorage (framework-agnostic)
 // ============================================================
-const MASTERY_KEY = "uhrzeit.mastery.v1";
+const MASTERY_KEY = "uhrzeit.mastery.v2";
+const MASTERY_KEY_V1 = "uhrzeit.mastery.v1";
 const LEVEL_KEY   = "uhrzeit.level";
 
+// v2 inserted two review levels into the curriculum:
+//   - id 10  (between viertel/stellen and the fuenf block)
+//   - id 15  (between fuenf/stellen and the 24h block)
+// Shift legacy level ids accordingly.
+function migrateV1Id(oldId) {
+  const i = parseInt(oldId, 10);
+  if (!Number.isInteger(i)) return null;
+  if (i < 10) return i;         // volle / halbe / viertel — unchanged
+  if (i < 14) return i + 1;     // old fuenf 10..13 → 11..14
+  if (i < 18) return i + 2;     // old 24h + minute 14..17 → 16..19
+  return null;                  // out of range — discard
+}
+
 function loadMastery() {
-  try { const raw = localStorage.getItem(MASTERY_KEY); return raw ? JSON.parse(raw) : {}; }
-  catch { return {}; }
+  try {
+    const raw = localStorage.getItem(MASTERY_KEY);
+    if (raw) return JSON.parse(raw);
+    // No v2 yet — try to migrate from v1 so returning users keep progress.
+    const v1 = localStorage.getItem(MASTERY_KEY_V1);
+    if (!v1) return {};
+    const old = JSON.parse(v1);
+    const migrated = {};
+    for (const [key, val] of Object.entries(old)) {
+      const newId = migrateV1Id(key);
+      if (newId !== null) migrated[newId] = val;
+    }
+    localStorage.setItem(MASTERY_KEY, JSON.stringify(migrated));
+    localStorage.removeItem(MASTERY_KEY_V1);
+    return migrated;
+  } catch { return {}; }
 }
 function saveMastery(m) { try { localStorage.setItem(MASTERY_KEY, JSON.stringify(m)); } catch {} }
 function masteryTier(correct) {
@@ -248,11 +306,12 @@ function resetMastery() {
 
 Object.assign(window, {
   HOUR_NAMES, hourName, parseTime, digitalStr, digitalFromQ, wordFromQ,
-  MINUTE_SETS, LEVELS, pickRandom, shuffle,
+  MINUTE_SETS, LEVELS, ALL_MODES, pickRandom, shuffle,
+  effectiveMinutes, pickMode,
   buildDigitalOptions, buildWordOptions,
   snap5deg, snapHour, snapToAllowedMinutes, minuteSnapGrid,
   QUARTER_GRID, FUENF_GRID,
   makeQuestion,
-  MASTERY_KEY, LEVEL_KEY,
+  MASTERY_KEY, MASTERY_KEY_V1, LEVEL_KEY, migrateV1Id,
   loadMastery, saveMastery, masteryTier, recordMastery, resetMastery,
 });

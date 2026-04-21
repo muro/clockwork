@@ -130,10 +130,42 @@ group('hourName & parseTime', () => {
 });
 
 group('MINUTE_SETS', () => {
-  test('minute set has all 60 entries, 0..59', () => {
-    eq(MINUTE_SETS.minute.length, 60);
-    eq(MINUTE_SETS.minute[0], 0);
-    eq(MINUTE_SETS.minute[59], 59);
+  // Each set now holds only the NEW minutes introduced at that level; earlier
+  // ones are covered via the review levels (which union several sets).
+  test('volle: just :00', () => eq(MINUTE_SETS.volle, [0]));
+  test('halbe: just :30 (delta)', () => eq(MINUTE_SETS.halbe, [30]));
+  test('viertel: just :15 and :45 (delta)', () => eq(MINUTE_SETS.viertel, [15, 45]));
+  test('fuenf: the eight non-quarter 5-min marks (delta)', () => {
+    eq(MINUTE_SETS.fuenf, [5, 10, 20, 25, 35, 40, 50, 55]);
+  });
+  test('minute: every minute that is not already a 5-min mark (delta)', () => {
+    eq(MINUTE_SETS.minute.length, 48);
+    ok(!MINUTE_SETS.minute.includes(0),  'excludes 0');
+    ok(!MINUTE_SETS.minute.includes(5),  'excludes 5');
+    ok(!MINUTE_SETS.minute.includes(30), 'excludes 30');
+    ok(MINUTE_SETS.minute.includes(1),   'includes 1');
+    ok(MINUTE_SETS.minute.includes(13),  'includes 13');
+    ok(MINUTE_SETS.minute.includes(59),  'includes 59');
+    // Delta-only: no entry is a multiple of 5.
+    for (const m of MINUTE_SETS.minute) ok(m % 5 !== 0, `m=${m} is a 5-mult`);
+  });
+});
+
+group('effectiveMinutes', () => {
+  // Single-set level: effectiveMinutes returns that set.
+  test('single minuteSet → that set', () => {
+    eq(effectiveMinutes({ minuteSet: 'halbe' }), [30]);
+    eq(effectiveMinutes({ minuteSet: 'viertel' }), [15, 45]);
+  });
+  test('minuteSets array → union, sorted ascending', () => {
+    eq(effectiveMinutes({ minuteSets: ['volle', 'halbe'] }), [0, 30]);
+    eq(effectiveMinutes({ minuteSets: ['volle', 'halbe', 'viertel'] }),
+       [0, 15, 30, 45]);
+    eq(effectiveMinutes({ minuteSets: ['volle', 'halbe', 'viertel', 'fuenf'] }),
+       [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55]);
+  });
+  test('duplicates within a union are collapsed', () => {
+    eq(effectiveMinutes({ minuteSets: ['halbe', 'halbe'] }), [30]);
   });
 });
 
@@ -176,6 +208,17 @@ group('minuteSnapGrid', () => {
   });
   test('unknown minuteSet returns null (no snap)', () => {
     eq(minuteSnapGrid({ minuteSet: 'totally-unknown' }), null);
+  });
+  // Review levels expose a minuteSets array. Grid should be the finest one
+  // the review covers so the hand can land anywhere that's asked.
+  test('review with only coarse sets uses the quarter grid', () => {
+    eq(minuteSnapGrid({ minuteSets: ['volle', 'halbe', 'viertel'] }), QUARTER_GRID);
+  });
+  test('review that includes fuenf uses the 5-minute grid', () => {
+    eq(minuteSnapGrid({ minuteSets: ['volle', 'halbe', 'viertel', 'fuenf'] }), FUENF_GRID);
+  });
+  test('review that includes minute returns null (free 1-min)', () => {
+    eq(minuteSnapGrid({ minuteSets: ['fuenf', 'minute'] }), null);
   });
 });
 
@@ -235,10 +278,9 @@ group('exercise: lesen', () => {
   for (const minuteSet of ['volle', 'halbe', 'viertel', 'fuenf', 'minute']) {
     test(`options for "${minuteSet}" include correct and are 4 unique`, () => {
       const level = { mode: 'lesen', minuteSet, hour24: false };
-      // "minute" sweeps 60 * 12 = 720 cases; trim to every 3rd minute to keep
-      // the test page snappy while still covering the full 0..59 shape.
+      // "minute" has 48 values * 12 hours = 576 cases; trim for test-page speed.
       const mins = minuteSet === 'minute'
-        ? MINUTE_SETS.minute.filter(m => m % 3 === 0)
+        ? MINUTE_SETS.minute.filter((_, i) => i % 3 === 0)
         : MINUTE_SETS[minuteSet];
       for (const m of mins) {
         for (let h = 1; h <= 12; h++) {
@@ -251,6 +293,20 @@ group('exercise: lesen', () => {
       }
     });
   }
+  // Review levels expose minuteSets as a union and buildDigitalOptions reads
+  // effectiveMinutes — options should work for every minute in that union.
+  test('review level (bis Viertel) options stay valid across the union', () => {
+    const level = { mode: 'lesen', minuteSets: ['volle','halbe','viertel'], hour24: false };
+    for (const m of [0, 15, 30, 45]) {
+      for (let h = 1; h <= 12; h++) {
+        const q = { h, m, dh: h, parsed: parseTime(h, m) };
+        const { options } = buildDigitalOptions(q, level);
+        eq(options.length, 4, `h=${h} m=${m}`);
+        eq(new Set(options).size, 4, `unique h=${h} m=${m}`);
+        contains(options, digitalFromQ(q), `correct h=${h} m=${m}`);
+      }
+    }
+  });
   test('24h options stay in the same half-day as the answer (no 6:40 vs 18:40 trap)', () => {
     // On a clock face you can't tell AM from PM — so 24h options must
     // never include the 12-hour twin of the correct answer.
@@ -317,6 +373,19 @@ group('exercise: wort-lesen', () => {
       }
     });
   }
+  test('review level (bis Fuenf) phrase options work across the union', () => {
+    const level = { mode: 'wort-lesen', minuteSets: ['volle','halbe','viertel','fuenf'], hour24: false };
+    const fullFuenf = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
+    for (const m of fullFuenf) {
+      for (let h = 1; h <= 12; h++) {
+        const q = { h, m, dh: h, parsed: parseTime(h, m) };
+        const { options } = buildWordOptions(q, level);
+        eq(options.length, 4, `h=${h} m=${m}`);
+        eq(new Set(options).size, 4, `unique h=${h} m=${m}`);
+        contains(options, wordFromQ(q), `correct h=${h} m=${m}`);
+      }
+    }
+  });
   test('halb distractor includes both "halb h" and "halb h+2" confusions', () => {
     // 3:30 correct = "halb vier"; expected distractors "halb drei" (current-hour) and "halb fünf" (over-shoot)
     const q = { h: 3, m: 30, dh: 3, parsed: parseTime(3, 30) };
@@ -366,8 +435,12 @@ group('exercise: stellen / wort-stellen snap round-trip', () => {
 // TRANSITIONS BETWEEN EXERCISE TYPES
 // ─────────────────────────────────────────────────────────────
 group('transitions between exercises', () => {
-  test('LEVELS covers all four modes', () => {
-    const modes = new Set(LEVELS.map(l => l.mode));
+  test('LEVELS covers all four modes across learning and review levels', () => {
+    const modes = new Set();
+    for (const l of LEVELS) {
+      if (l.mode) modes.add(l.mode);
+      if (l.modes) for (const m of l.modes) modes.add(m);
+    }
     eq(modes.has('lesen'), true);
     eq(modes.has('stellen'), true);
     eq(modes.has('wort-lesen'), true);
@@ -376,11 +449,12 @@ group('transitions between exercises', () => {
   test('LEVELS ids are sequential and unique', () => {
     LEVELS.forEach((l, i) => eq(l.id, i, `id at ${i}`));
   });
-  test('makeQuestion produces an h,m,parsed matching the level minuteSet', () => {
+  test('makeQuestion matches the level-effective minuteSet', () => {
     for (const level of LEVELS) {
       const q = makeQuestion(level);
       ok(q.h >= 1 && q.h <= 12, `h in range (${level.title})`);
-      ok(MINUTE_SETS[level.minuteSet].includes(q.m), `m in minuteSet (${level.title})`);
+      const mins = effectiveMinutes(level);
+      ok(mins.includes(q.m), `m=${q.m} in effectiveMinutes (${level.title})`);
       eq(q.parsed.fullWord, parseTime(q.h, q.m).fullWord, `parsed consistent (${level.title})`);
       if (level.hour24) ok(q.dh >= 12 && q.dh <= 23, `24h dh PM-only (${level.title})`);
     }
@@ -393,20 +467,20 @@ group('transitions between exercises', () => {
       ok(q.dh >= 12 && q.dh <= 23, `draw ${i} dh=${q.dh}`);
     }
   });
-  test('switching levels picks a different mode', () => {
-    // level 0 is lesen/volle, level 3 is wort-lesen/halbe
+  test('early levels sit at known positions', () => {
+    // First block (volle + halbe) is unchanged by the review insertions.
     eq(LEVELS[0].mode, 'lesen');
+    eq(LEVELS[1].mode, 'stellen');
     eq(LEVELS[3].mode, 'wort-lesen');
     eq(LEVELS[4].mode, 'wort-stellen');
-    eq(LEVELS[1].mode, 'stellen');
   });
-  test('minute-precision levels are last: lesen then stellen', () => {
-    const lesen   = LEVELS.find(l => l.minuteSet === 'minute' && l.mode === 'lesen');
-    const stellen = LEVELS.find(l => l.minuteSet === 'minute' && l.mode === 'stellen');
-    ok(lesen,   'lesen/minute level exists');
-    ok(stellen, 'stellen/minute level exists');
-    // No wort-* forms for 1-min precision (no German phrase wording exists).
-    ok(!LEVELS.some(l => l.minuteSet === 'minute' && l.mode.startsWith('wort')),
+  test('minute-precision levels remain the very last two (lesen then stellen)', () => {
+    const n = LEVELS.length;
+    const lesen   = LEVELS[n - 2];
+    const stellen = LEVELS[n - 1];
+    eq(lesen.minuteSet, 'minute');   eq(lesen.mode,   'lesen');
+    eq(stellen.minuteSet, 'minute'); eq(stellen.mode, 'stellen');
+    ok(!LEVELS.some(l => l.minuteSet === 'minute' && l.mode && l.mode.startsWith('wort')),
       'no wort-* levels at minute precision');
   });
   test('makeQuestion on minute-precision level produces integer minute 0..59', () => {
@@ -415,6 +489,57 @@ group('transitions between exercises', () => {
       const q = makeQuestion(level);
       ok(Number.isInteger(q.m) && q.m >= 0 && q.m < 60, `m in range — got ${q.m}`);
       ok(q.h >= 1 && q.h <= 12, `h in range — got ${q.h}`);
+    }
+  });
+});
+
+group('review levels', () => {
+  test('there are exactly two — after viertel and after fuenf', () => {
+    const reviews = LEVELS.filter(l => l.review);
+    eq(reviews.length, 2, `got ${reviews.length} review levels`);
+  });
+  test('first review sits immediately after the viertel block', () => {
+    // The viertel block ends with viertel/stellen; the review sits right after.
+    const i = LEVELS.findIndex(l => l.review);
+    ok(i > 0, 'review exists');
+    eq(LEVELS[i - 1].minuteSet, 'viertel');
+    eq(LEVELS[i - 1].mode,      'stellen');
+    eq(LEVELS[i].minuteSets.join(','), 'volle,halbe,viertel');
+  });
+  test('second review sits immediately after the fuenf block', () => {
+    const iAll = LEVELS.map((l, i) => l.review ? i : -1).filter(i => i >= 0);
+    const i = iAll[1];
+    eq(LEVELS[i - 1].minuteSet, 'fuenf');
+    eq(LEVELS[i - 1].mode,      'stellen');
+    eq(LEVELS[i].minuteSets.join(','), 'volle,halbe,viertel,fuenf');
+  });
+  test('review levels declare all four modes, no single scalar mode', () => {
+    for (const r of LEVELS.filter(l => l.review)) {
+      ok(!r.mode, `review level ${r.id} must not set .mode`);
+      eq(new Set(r.modes).size, 4);
+      for (const m of ['lesen', 'stellen', 'wort-lesen', 'wort-stellen']) {
+        ok(r.modes.includes(m), `review ${r.id} missing ${m}`);
+      }
+    }
+  });
+  test('makeQuestion on a review level picks a mode from the level list', () => {
+    const review = LEVELS.find(l => l.review);
+    const seen = new Set();
+    for (let i = 0; i < 200; i++) {
+      const q = makeQuestion(review);
+      ok(review.modes.includes(q.mode), `q.mode=${q.mode} not in level.modes`);
+      seen.add(q.mode);
+    }
+    // With 200 draws over 4 modes, coverage should be complete.
+    eq(seen.size, 4, `only saw modes: ${[...seen].join(',')}`);
+  });
+  test('makeQuestion on a review level distributes minutes across the union', () => {
+    const review = LEVELS.find(l => l.review && l.minuteSets.includes('fuenf'));
+    const mins = new Set();
+    for (let i = 0; i < 400; i++) mins.add(makeQuestion(review).m);
+    // Expect all 12 five-minute marks eventually.
+    for (const m of [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55]) {
+      ok(mins.has(m), `m=${m} never drawn in 400 trials`);
     }
   });
 });
@@ -451,6 +576,57 @@ group('localStorage persistence', () => {
     eq(m[0].tier, 3);
     eq(m[5].tier, 1);
     ok(m[1] === undefined, 'level 1 untouched');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// MASTERY MIGRATION — v1 (pre-review-levels) → v2
+// v1 had 18 levels (0..17). v2 inserts review levels at 10 and 15,
+// shifting all levels that sat past those insertion points.
+//   old [0..9]   → unchanged
+//   old [10..13] → +1  (fuenf block; now at 11..14)
+//   old [14..15] → +2  (24h; now at 16..17)
+//   old [16..17] → +2  (minute; now at 18..19)
+// ─────────────────────────────────────────────────────────────
+group('mastery migration v1 → v2', () => {
+  const V1_KEY = 'uhrzeit.mastery.v1';
+  test('MASTERY_KEY is v2', () => eq(MASTERY_KEY, 'uhrzeit.mastery.v2'));
+  test('loadMastery migrates v1 ids into their v2 positions', () => {
+    localStorage.removeItem(MASTERY_KEY);
+    localStorage.setItem(V1_KEY, JSON.stringify({
+      0:  { tier: 3, best: 10, last: 10 }, // unchanged
+      9:  { tier: 2, best: 9,  last: 9  }, // unchanged (viertel/stellen)
+      10: { tier: 1, best: 8,  last: 8  }, // was fuenf/lesen → 11
+      13: { tier: 3, best: 10, last: 10 }, // was fuenf/stellen → 14
+      14: { tier: 2, best: 9,  last: 9  }, // was 24h/lesen → 16
+      17: { tier: 1, best: 8,  last: 8  }, // was minute/stellen → 19
+    }));
+    const loaded = loadMastery();
+    eq(loaded[0].tier, 3,  'old 0 stayed');
+    eq(loaded[9].tier, 2,  'old 9 stayed');
+    eq(loaded[11].tier, 1, 'old 10 → 11');
+    eq(loaded[14].tier, 3, 'old 13 → 14');
+    eq(loaded[16].tier, 2, 'old 14 → 16');
+    eq(loaded[19].tier, 1, 'old 17 → 19');
+  });
+  test('after migration v1 is cleared and v2 holds the migrated data', () => {
+    localStorage.removeItem(MASTERY_KEY);
+    localStorage.setItem(V1_KEY, JSON.stringify({ 17: { tier: 3, best: 10, last: 10 } }));
+    loadMastery();
+    eq(localStorage.getItem(V1_KEY), null, 'v1 cleared');
+    const v2 = JSON.parse(localStorage.getItem(MASTERY_KEY));
+    eq(v2[19].tier, 3, 'v2 holds the shifted value');
+  });
+  test('v2 data wins over lingering v1 data', () => {
+    localStorage.setItem(MASTERY_KEY, JSON.stringify({ 5: { tier: 2, best: 9, last: 9 } }));
+    localStorage.setItem(V1_KEY, JSON.stringify({ 17: { tier: 3, best: 10, last: 10 } }));
+    const loaded = loadMastery();
+    eq(loaded[5].tier, 2);
+    ok(loaded[19] === undefined, 'v1 not re-migrated when v2 exists');
+    // v1 should have been left alone in this case (v2 already ran the migration
+    // historically — don't clobber it).
+    ok(localStorage.getItem(V1_KEY) !== null, 'v1 preserved when v2 already present');
+    localStorage.removeItem(V1_KEY);
   });
 });
 

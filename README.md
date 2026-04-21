@@ -1,9 +1,12 @@
 # Uhrzeit Lernen
 
 A small, zero-install German clock-reading game. Four exercise types across
-an 18-level curriculum (volle → halbe → viertel → 5-Minuten → 24h →
-minutengenau), growing a daffodil on each level you master. Four color
-themes (Sonne / Nacht / Blüte / Iris) are selectable from the header.
+a 20-level curriculum (volle → halbe → viertel → **review** → 5-Minuten
+→ **review** → 24h → minutengenau), growing a dandelion on each level
+you master. Each learning level focuses on the *new* minute positions for
+its tier; review levels mix all four modes across everything learned so
+far. Two color themes (Koralle / Abend) with an Auto swatch that follows
+`prefers-color-scheme`.
 
 ## Run it
 
@@ -28,7 +31,7 @@ uses a two-step confirmation (first tap arms, second tap within 4 s commits).
 | `index.html` | The app. Loads React + Babel standalone from CDN and runs JSX inline. |
 | `engine.js` | Pure logic — `parseTime`, option builders, snap, mastery. No React, no DOM. Shared with `tests.html`. |
 | `preview.html` | Development preview. Renders `index.html` inside a phone-frame mockup via `<iframe>`. The frame is not part of the app. |
-| `tests.html` | 62 in-browser unit tests. Open directly or via the static server. |
+| `tests.html` | 86 in-browser unit tests. Open directly or via the static server. |
 | `.claude/launch.json` | Claude Code preview server config (`python3 -m http.server 8765`). |
 
 ## Exercises
@@ -40,8 +43,15 @@ uses a two-step confirmation (first tap arms, second tap within 4 s commits).
 | `wort-lesen` | Clock face | Tap the matching German phrase |
 | `wort-stellen` | German phrase | Drag/tap the hands to match |
 
-A round is 10 questions. Scores at ≥8 / ≥9 / ≥10 earn a sprout / bud /
-daffodil for that level and persist across sessions.
+A round is 10 questions. Scores at ≥8 / ≥9 / ≥10 earn a Spross / Blüte /
+Löwenzahn for that level and persist across sessions.
+
+**Review levels** sit between the learning blocks (after Viertel-stellen
+and after 5-Min-stellen). Each question in a review randomly picks one
+of the four modes and draws a minute from the union of all sets so far,
+so a review round really exercises everything. The track marks review
+stops with a rosette medallion to distinguish them from the growth
+icons.
 
 ## Tests
 
@@ -63,8 +73,9 @@ loads `engine.js` and asserts on the pure functions. Coverage:
 - Level transitions — `LEVELS` covers all four modes; `makeQuestion`
   produces an `(h, m, parsed)` consistent with the level's minute set
 - `localStorage` — `saveMastery` / `loadMastery` round-trip;
-  `resetMastery` clears both `uhrzeit.mastery.v1` and `uhrzeit.level`;
-  mastery is keyed independently per level
+  `resetMastery` clears both `uhrzeit.mastery.v2` and `uhrzeit.level`;
+  mastery is keyed independently per level; legacy `v1` data migrates
+  into the new level ids on first load
 
 The document title updates to `N ✓ / M ✗ — Uhrzeit Tests`, handy for a
 headless CI check that greps `#summary`.
