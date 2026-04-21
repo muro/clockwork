@@ -21,6 +21,11 @@ function parseTime(h, m) {
     case 50: return { minute: "10 vor", hour: next, next, full: `10 vor ${next}`, fullWord: `zehn vor ${hourName(next)}` };
     case 55: return { minute: "5 vor", hour: next, next, full: `5 vor ${next}`, fullWord: `fünf vor ${hourName(next)}` };
   }
+  // Minute-precision fallback: no standard nach/vor wording exists, so
+  // full/fullWord fall back to the digital form. Used by the 1-minute levels,
+  // where the exercises are lesen/stellen only (no wort-* modes).
+  const digital = `${h}:${String(m).padStart(2, "0")}`;
+  return { minute: null, hour: h, next, full: digital, fullWord: digital };
 }
 function digitalStr(h, m) { return `${h}:${String(m).padStart(2, "0")}`; }
 function digitalFromQ(q) { const hh = q.dh ?? q.h; return `${hh}:${String(q.m).padStart(2, "0")}`; }
@@ -31,6 +36,7 @@ const MINUTE_SETS = {
   halbe:   [0, 30],
   viertel: [0, 15, 30, 45],
   fuenf:   [0,5,10,15,20,25,30,35,40,45,50,55],
+  minute:  Array.from({ length: 60 }, (_, i) => i),
 };
 
 // modes: lesen (clock→digital), stellen (digital→clock),
@@ -52,6 +58,8 @@ const LEVELS = [
   { id: 13, mode: "stellen",      minuteSet: "fuenf",   hour24: false, title: "5-Min. stellen",     sub: "Uhr stellen · alle 5" },
   { id: 14, mode: "lesen",        minuteSet: "fuenf",   hour24: true,  title: "24 Stunden",         sub: "Uhr ablesen · 24h" },
   { id: 15, mode: "stellen",      minuteSet: "fuenf",   hour24: true,  title: "24h stellen",        sub: "Uhr stellen · 24h" },
+  { id: 16, mode: "lesen",        minuteSet: "minute",  hour24: false, title: "Minutengenau",       sub: "Uhr ablesen · jede Minute" },
+  { id: 17, mode: "stellen",      minuteSet: "minute",  hour24: false, title: "Minutengenau stellen", sub: "Uhr stellen · jede Minute" },
 ];
 
 function pickRandom(a){ return a[Math.floor(Math.random()*a.length)]; }
@@ -68,8 +76,10 @@ function buildDigitalOptions(q, level) {
     const alt = q.dh < 12 ? (q.dh + 12) % 24 : q.dh - 12;
     if (alt !== q.dh) opts.add(`${alt}:${String(q.m).padStart(2,'0')}`);
   }
+  // "minute-hand hour" confusion: if minute-hand points at the 3, swap with
+  // hour=3. Only makes sense for 5-minute multiples; skip for arbitrary minutes.
   const mh = q.m === 0 ? 12 : q.m / 5;
-  if (mh !== q.h) opts.add(digitalStr(mh, q.m));
+  if (Number.isInteger(mh) && mh !== q.h) opts.add(digitalStr(mh, q.m));
   if (q.m === 15) opts.add(digitalStr(q.h, 45));
   if (q.m === 45) opts.add(digitalStr(q.h, 15));
   opts.add(digitalStr((q.h % 12) + 1, q.m));
@@ -157,6 +167,7 @@ function minuteSnapGrid(level) {
     case 'halbe':
     case 'viertel': return QUARTER_GRID;
     case 'fuenf':   return FUENF_GRID;
+    case 'minute':  return null;  // every minute — fall through to 6° rounding
     default:        return null;
   }
 }

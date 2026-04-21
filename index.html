@@ -12,19 +12,30 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:ital,wght@0,400;0,600;0,700;1,400;1,600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  :root { color-scheme: light; }
+  :root {
+    color-scheme: light;
+    /* Theme tokens — set by JS when the theme changes. Defaults match "sun". */
+    --bg-top: #fffbe0;
+    --bg-mid: #fef3b8;
+    --bg-bot: #fde884;
+    --ink: #2a2418;
+    --sun-core: #ffffff;
+    --sun-mid: #fcc419;
+    --sun-edge: #f59f00;
+    --sun-opacity: 0.55;
+  }
   html, body {
     margin: 0; padding: 0;
     background:
-      radial-gradient(ellipse 80% 30% at 50% 0%, #fffbe0 0%, transparent 60%),
-      linear-gradient(180deg, #fef3b8 0%, #fde884 100%);
+      radial-gradient(ellipse 80% 30% at 50% 0%, var(--bg-top) 0%, transparent 60%),
+      linear-gradient(180deg, var(--bg-mid) 0%, var(--bg-bot) 100%);
     background-attachment: fixed;
     min-height: 100vh;
     min-height: 100dvh;
     -webkit-tap-highlight-color: transparent;
     overscroll-behavior: none;
   }
-  body { font-family: Nunito, sans-serif; color: #2a2418; }
+  body { font-family: Nunito, sans-serif; color: var(--ink); }
   button { font-family: inherit; cursor: pointer; }
   @keyframes clockPop {
     0% { transform: scale(0) rotate(-20deg); }
@@ -50,8 +61,8 @@
     top: -60px; right: -50px;
     width: 160px; height: 160px;
     border-radius: 50%;
-    background: radial-gradient(circle at 35% 35%, #fff, #fcc419 55%, #f59f00 100%);
-    opacity: 0.55;
+    background: radial-gradient(circle at 35% 35%, var(--sun-core), var(--sun-mid) 55%, var(--sun-edge) 100%);
+    opacity: var(--sun-opacity);
     pointer-events: none;
   }
 </style>
@@ -65,6 +76,124 @@
 <script src="engine.js"></script>
 
 <script type="text/babel" data-presets="react">
+// ============================================================
+// THEMES — page palette + clock theme in one object per theme
+// ============================================================
+const THEMES = {
+  sun: {
+    label: 'Sonne',
+    page: { top: '#fffbe0', mid: '#fef3b8', bot: '#fde884' },
+    sun:  { core: '#ffffff', mid: '#fcc419', edge: '#f59f00', opacity: 0.55 },
+    ink: '#2a2418',
+    soft: '#8c826a',
+    paper: '#fffef5',
+    accent: '#e8590c',
+    accentSoft: 'rgba(232,89,12,0.22)',
+    correct: '#5c940d',
+    wrong: '#c92a2a',
+    buttonSurface: 'rgba(255,255,255,0.45)',
+    buttonBorder: 'rgba(42,36,24,0.18)',
+    clockFace: 'rgba(255,253,235,0.8)',
+    clockBorder: '#2a2418',
+    tickMinor: 'rgba(42,36,24,0.4)',
+  },
+  night: {
+    label: 'Nacht',
+    page: { top: '#1e3050', mid: '#0f1c33', bot: '#070e1c' },
+    sun:  { core: '#eef3ff', mid: '#a8b8d4', edge: '#5b7090', opacity: 0.35 },
+    ink: '#e8edf7',
+    soft: '#8ba0c4',
+    paper: '#1c2a45',
+    accent: '#5b9cf5',
+    accentSoft: 'rgba(91,156,245,0.22)',
+    correct: '#7bc47f',
+    wrong: '#ff6b6b',
+    buttonSurface: 'rgba(255,255,255,0.06)',
+    buttonBorder: 'rgba(255,255,255,0.14)',
+    clockFace: 'rgba(28,42,69,0.85)',
+    clockBorder: '#8ba0c4',
+    tickMinor: 'rgba(232,237,247,0.3)',
+  },
+  blossom: {
+    label: 'Blüte',
+    page: { top: '#fff5e0', mid: '#ffd0e1', bot: '#ffe8a8' },
+    sun:  { core: '#ffffff', mid: '#ffc0d6', edge: '#e13b7b', opacity: 0.55 },
+    ink: '#5a1f3f',
+    soft: '#a06b85',
+    paper: '#fffaf5',
+    accent: '#e13b7b',
+    accentSoft: 'rgba(225,59,123,0.22)',
+    correct: '#5c940d',
+    wrong: '#c92a2a',
+    buttonSurface: 'rgba(255,255,255,0.55)',
+    buttonBorder: 'rgba(90,31,63,0.18)',
+    clockFace: 'rgba(255,250,245,0.85)',
+    clockBorder: '#5a1f3f',
+    tickMinor: 'rgba(90,31,63,0.35)',
+  },
+  iris: {
+    label: 'Iris',
+    page: { top: '#fffbe0', mid: '#fce890', bot: '#c9b8e5' },
+    sun:  { core: '#ffffff', mid: '#fce890', edge: '#8b5fbf', opacity: 0.5 },
+    ink: '#3e1f5c',
+    soft: '#7d6ea5',
+    paper: '#fdf9e7',
+    accent: '#8b5fbf',
+    accentSoft: 'rgba(139,95,191,0.22)',
+    correct: '#5c940d',
+    wrong: '#c92a2a',
+    buttonSurface: 'rgba(255,255,255,0.5)',
+    buttonBorder: 'rgba(62,31,92,0.18)',
+    clockFace: 'rgba(253,249,231,0.85)',
+    clockBorder: '#3e1f5c',
+    tickMinor: 'rgba(62,31,92,0.35)',
+  },
+};
+const THEME_KEY = 'uhrzeit.theme';
+
+function useTheme() {
+  const [id, setId] = React.useState(() => {
+    try { const v = localStorage.getItem(THEME_KEY); return THEMES[v] ? v : 'sun'; }
+    catch { return 'sun'; }
+  });
+  const T = THEMES[id] || THEMES.sun;
+  React.useEffect(() => {
+    try { localStorage.setItem(THEME_KEY, id); } catch {}
+    const root = document.documentElement;
+    root.style.setProperty('--bg-top', T.page.top);
+    root.style.setProperty('--bg-mid', T.page.mid);
+    root.style.setProperty('--bg-bot', T.page.bot);
+    root.style.setProperty('--ink', T.ink);
+    root.style.setProperty('--sun-core', T.sun.core);
+    root.style.setProperty('--sun-mid', T.sun.mid);
+    root.style.setProperty('--sun-edge', T.sun.edge);
+    root.style.setProperty('--sun-opacity', String(T.sun.opacity));
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', T.page.bot);
+  }, [id]);
+  return { id, setId, T };
+}
+
+function ThemePicker({ id, setId, T }) {
+  return <div role="tablist" aria-label="Farbschema"
+    style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+    {Object.entries(THEMES).map(([key, th]) => {
+      const active = key === id;
+      return <button key={key} role="tab" aria-label={th.label} aria-selected={active}
+        title={th.label}
+        onClick={(e) => { e.stopPropagation(); setId(key); }}
+        style={{
+          width: 16, height: 16, padding: 0, borderRadius: '50%',
+          background: th.accent, cursor: 'pointer',
+          border: active ? `2px solid ${T.ink}` : `1px solid ${T.buttonBorder}`,
+          boxShadow: active ? `0 0 0 2px ${T.page.bot}` : 'none',
+          transition: 'box-shadow .15s, border-color .15s, transform .15s',
+          transform: active ? 'scale(1.08)' : 'none',
+        }} />;
+    })}
+  </div>;
+}
+
 // ============================================================
 // MASTERY HOOK — wraps engine.js mastery helpers with React state
 // ============================================================
@@ -394,21 +523,30 @@ function Clock({
     );
   });
 
+  // The minute the hand is currently "pointing at" — highlighted so the
+  // learner can read off the exact minute, especially in 1-min-precision
+  // levels where the hand lands between 5-min marks.
+  const activeMinute = ((Math.round(minAng / 6) % 60) + 60) % 60;
   const ticks = [];
   for (let i = 0; i < 60; i++) {
     const major = i % 5 === 0;
-    if (!major && !showMinorTicks) continue;
+    const active = i === activeMinute;
+    if (!major && !showMinorTicks && !active) continue;
     const rot = (i / 60) * 360;
-    const len = major ? majorLen : minorLen;
-    const thick = major ? tickThickness : minorThickness;
+    const len = active ? majorLen + 4 : (major ? majorLen : minorLen);
+    const thick = active ? tickThickness + 1 : (major ? tickThickness : minorThickness);
+    const color = active
+      ? (theme.tickActive || theme.minHand || '#e8590c')
+      : (major ? (theme.tickColor || '#2a2418') : (theme.tickMinor || 'rgba(0,0,0,0.3)'));
     ticks.push(
       <div key={i} data-nodrag style={{
         position: 'absolute', left: '50%', top: 0,
         width: thick, height: len,
-        background: major ? (theme.tickColor || '#2a2418') : (theme.tickMinor || 'rgba(0,0,0,0.3)'),
+        background: color,
         transformOrigin: `${thick/2}px ${R}px`,
         transform: `translateX(-50%) rotate(${rot}deg)`,
         borderRadius: 1, pointerEvents: 'none',
+        transition: live ? 'none' : 'background .2s, height .2s',
       }} />
     );
   }
@@ -631,22 +769,28 @@ function NextBtn({ onClick, c, font, accent }) {
 }
 
 function optionButtonStyle(state, c, font, shape) {
-  let bg = 'transparent', color = c.ink, border = `1.5px solid ${c.ink}`;
-  if (state === 'selected') { bg = c.ink; color = c.paper; }
-  else if (state === 'correct') { color = c.correct; border = `1.5px solid ${c.correct}`; }
-  else if (state === 'wrong')   { color = c.wrong; border = `1.5px solid ${c.wrong}`; }
-  else if (state === 'faded')   { color = c.soft; border = `1px solid rgba(0,0,0,0.1)`; }
-  return shape === 'pill' ? {
-    fontFamily: font, fontWeight: 500, fontSize: 22,
-    padding: '14px 10px', minHeight: 56, borderRadius: 999,
-    border, background: bg, color,
-    fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.01em',
-    transition: 'all .15s ease',
-  } : {
-    fontFamily: font, fontWeight: 500, fontSize: 17,
-    padding: '13px 16px', minHeight: 50, borderRadius: 14,
-    border, background: bg, color, textAlign: 'left',
+  // Default surface: a thin low-contrast border over a transparent light
+  // layer — reads as part of the page rather than a bold outlined chip.
+  let bg = c.buttonSurface, color = c.ink, border = `1px solid ${c.buttonBorder}`;
+  if (state === 'selected') { bg = c.ink; color = c.paper; border = `1px solid ${c.ink}`; }
+  else if (state === 'correct') { color = c.correct; border = `1px solid ${c.correct}`; bg = c.buttonSurface; }
+  else if (state === 'wrong')   { color = c.wrong; border = `1px solid ${c.wrong}`; bg = c.buttonSurface; }
+  else if (state === 'faded')   { color = c.soft; border = `1px solid ${c.buttonBorder}`; bg = 'transparent'; }
+  const shared = {
+    fontFamily: font, border, background: bg, color,
     letterSpacing: '-0.01em', transition: 'all .15s ease',
+    backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)',
+  };
+  return shape === 'pill' ? {
+    ...shared,
+    fontWeight: 500, fontSize: 22,
+    padding: '14px 10px', minHeight: 56, borderRadius: 999,
+    fontVariantNumeric: 'tabular-nums',
+  } : {
+    ...shared,
+    fontWeight: 500, fontSize: 17,
+    padding: '13px 16px', minHeight: 50, borderRadius: 14,
+    textAlign: 'left',
   };
 }
 
@@ -758,8 +902,9 @@ function RoundComplete({ c, accent, font, correct, tier, onAgain, onNext, hasNex
     <div style={{ display: 'flex', gap: 8, marginTop: 20, justifyContent: 'center' }}>
       <button onClick={onAgain}
         style={{ fontFamily: font, fontWeight: 600, fontSize: 15,
-          padding: '11px 22px', borderRadius: 999, border: `1.5px solid ${c.ink}`,
-          background: 'transparent', color: c.ink, cursor: 'pointer' }}>Nochmal</button>
+          padding: '11px 22px', borderRadius: 999, border: `1px solid ${c.buttonBorder}`,
+          background: c.buttonSurface, color: c.ink, cursor: 'pointer',
+          backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}>Nochmal</button>
       {hasNext && <button onClick={onNext}
         style={{ fontFamily: font, fontWeight: 600, fontSize: 15,
           padding: '11px 22px', borderRadius: 999, border: 0,
@@ -831,6 +976,7 @@ function ResetIcon({ onReset, c, soft }) {
 // ============================================================
 function UhrzeitApp() {
   const { mastery, record, reset } = useMastery();
+  const { id: themeId, setId: setThemeId, T } = useTheme();
   const [levelId, setLevelId] = React.useState(() => {
     try { return parseInt(localStorage.getItem(LEVEL_KEY) || '0', 10) || 0; }
     catch { return 0; }
@@ -849,15 +995,18 @@ function UhrzeitApp() {
   const level = LEVELS[levelId];
 
   const c = {
-    paper: '#fffef5', ink: '#2a2418', soft: '#8c826a',
-    correct: '#5c940d', wrong: '#c92a2a',
-    accentSoft: 'rgba(232,89,12,0.22)',
+    paper: T.paper, ink: T.ink, soft: T.soft,
+    correct: T.correct, wrong: T.wrong,
+    accentSoft: T.accentSoft,
+    buttonSurface: T.buttonSurface,
+    buttonBorder: T.buttonBorder,
   };
-  const accent = '#e8590c';
+  const accent = T.accent;
   const theme = {
-    face: 'rgba(255,253,235,0.8)', border: `1.5px solid ${c.ink}`,
-    numeral: c.ink, hourHand: c.ink, minHand: accent,
-    tickColor: c.ink, tickMinor: 'rgba(42,36,24,0.4)', pivot: c.ink,
+    face: T.clockFace, border: `1.5px solid ${T.clockBorder}`,
+    numeral: T.ink, hourHand: T.ink, minHand: accent,
+    tickColor: T.ink, tickMinor: T.tickMinor, pivot: T.ink,
+    tickActive: accent,
   };
 
   const handleReset = () => { reset(); setLevelId(0); game.actions.startRound(); };
@@ -875,6 +1024,7 @@ function UhrzeitApp() {
           <span>№ {String(S.qIndex+1).padStart(2,'0')} / {String(S.roundN).padStart(2,'0')}</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <span>{S.score} Pkt · <span style={{ color: accent }}>{S.streak}↑</span></span>
+            <ThemePicker id={themeId} setId={setThemeId} T={T} />
             <ResetIcon onReset={handleReset} c={c} soft={c.soft} />
           </div>
         </div>

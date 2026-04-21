@@ -112,6 +112,29 @@ group('hourName & parseTime', () => {
       }
     }
   });
+  test('parseTime falls back to digital form for 1-min precision', () => {
+    // 3:12 has no standard nach/vor wording — fullWord should read as digital.
+    const p = parseTime(3, 12);
+    eq(p.fullWord, '3:12');
+    eq(p.full, '3:12');
+    eq(p.hour, 3);
+  });
+  test('parseTime returns a defined object for every minute 0..59', () => {
+    for (let m = 0; m < 60; m++) {
+      for (let h = 1; h <= 12; h++) {
+        const p = parseTime(h, m);
+        ok(p && typeof p.fullWord === 'string' && p.fullWord.length > 0, `h=${h} m=${m}`);
+      }
+    }
+  });
+});
+
+group('MINUTE_SETS', () => {
+  test('minute set has all 60 entries, 0..59', () => {
+    eq(MINUTE_SETS.minute.length, 60);
+    eq(MINUTE_SETS.minute[0], 0);
+    eq(MINUTE_SETS.minute[59], 59);
+  });
 });
 
 group('digitalFromQ / wordFromQ', () => {
@@ -148,8 +171,11 @@ group('minuteSnapGrid', () => {
   test('fuenf uses the 5-minute grid', () => {
     eq(minuteSnapGrid({ minuteSet: 'fuenf' }), FUENF_GRID);
   });
-  test('unknown minuteSet returns null (no snap)', () => {
+  test('minute returns null — falls through to 6° (1-minute) rounding', () => {
     eq(minuteSnapGrid({ minuteSet: 'minute' }), null);
+  });
+  test('unknown minuteSet returns null (no snap)', () => {
+    eq(minuteSnapGrid({ minuteSet: 'totally-unknown' }), null);
   });
 });
 
@@ -206,10 +232,15 @@ group('recordMastery', () => {
 // EXERCISE TYPE: LESEN (clock → digital)
 // ─────────────────────────────────────────────────────────────
 group('exercise: lesen', () => {
-  for (const minuteSet of ['volle', 'halbe', 'viertel', 'fuenf']) {
+  for (const minuteSet of ['volle', 'halbe', 'viertel', 'fuenf', 'minute']) {
     test(`options for "${minuteSet}" include correct and are 4 unique`, () => {
       const level = { mode: 'lesen', minuteSet, hour24: false };
-      for (const m of MINUTE_SETS[minuteSet]) {
+      // "minute" sweeps 60 * 12 = 720 cases; trim to every 3rd minute to keep
+      // the test page snappy while still covering the full 0..59 shape.
+      const mins = minuteSet === 'minute'
+        ? MINUTE_SETS.minute.filter(m => m % 3 === 0)
+        : MINUTE_SETS[minuteSet];
+      for (const m of mins) {
         for (let h = 1; h <= 12; h++) {
           const q = { h, m, dh: h, parsed: parseTime(h, m) };
           const { options } = buildDigitalOptions(q, level);
@@ -321,6 +352,23 @@ group('transitions between exercises', () => {
     eq(LEVELS[3].mode, 'wort-lesen');
     eq(LEVELS[4].mode, 'wort-stellen');
     eq(LEVELS[1].mode, 'stellen');
+  });
+  test('minute-precision levels are last: lesen then stellen', () => {
+    const lesen   = LEVELS.find(l => l.minuteSet === 'minute' && l.mode === 'lesen');
+    const stellen = LEVELS.find(l => l.minuteSet === 'minute' && l.mode === 'stellen');
+    ok(lesen,   'lesen/minute level exists');
+    ok(stellen, 'stellen/minute level exists');
+    // No wort-* forms for 1-min precision (no German phrase wording exists).
+    ok(!LEVELS.some(l => l.minuteSet === 'minute' && l.mode.startsWith('wort')),
+      'no wort-* levels at minute precision');
+  });
+  test('makeQuestion on minute-precision level produces integer minute 0..59', () => {
+    const level = LEVELS.find(l => l.minuteSet === 'minute');
+    for (let i = 0; i < 40; i++) {
+      const q = makeQuestion(level);
+      ok(Number.isInteger(q.m) && q.m >= 0 && q.m < 60, `m in range — got ${q.m}`);
+      ok(q.h >= 1 && q.h <= 12, `h in range — got ${q.h}`);
+    }
   });
 });
 

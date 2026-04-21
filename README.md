@@ -1,8 +1,9 @@
 # Uhrzeit Lernen
 
 A small, zero-install German clock-reading game. Four exercise types across
-a 16-level curriculum (volle → halbe → viertel → 5-Minuten → 24h), growing a
-daffodil on each level you master.
+an 18-level curriculum (volle → halbe → viertel → 5-Minuten → 24h →
+minutengenau), growing a daffodil on each level you master. Four color
+themes (Sonne / Nacht / Blüte / Iris) are selectable from the header.
 
 ## Run it
 
@@ -27,7 +28,7 @@ uses a two-step confirmation (first tap arms, second tap within 4 s commits).
 | `index.html` | The app. Loads React + Babel standalone from CDN and runs JSX inline. |
 | `engine.js` | Pure logic — `parseTime`, option builders, snap, mastery. No React, no DOM. Shared with `tests.html`. |
 | `preview.html` | Development preview. Renders `index.html` inside a phone-frame mockup via `<iframe>`. The frame is not part of the app. |
-| `tests.html` | 46 in-browser unit tests. Open directly or via the static server. |
+| `tests.html` | 62 in-browser unit tests. Open directly or via the static server. |
 | `.claude/launch.json` | Claude Code preview server config (`python3 -m http.server 8765`). |
 
 ## Exercises
