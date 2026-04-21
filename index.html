@@ -10,7 +10,7 @@
 <title>Uhrzeit Lernen</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:ital,wght@0,400;0,600;0,700;1,400;1,600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,400;0,600;0,700;0,800;1,400;1,600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
     color-scheme: light;
@@ -427,9 +427,26 @@ function useClockGame({ levelId = 0, roundN = 10, onMilestone, onRoundDone } = {
   // Clean up any pending auto-submit on unmount / level change / new question.
   React.useEffect(() => () => cancelAutoSubmit(), []);
 
+  // ---- Debug helpers (temporary) -------------------------------------------
+  // Synthesise a completed round with N correct answers so the mastery reward
+  // screen can be inspected at every tier without actually playing.
+  const debugCompleteRound = (correct) => {
+    cancelAutoSubmit();
+    const n = Math.max(0, Math.min(roundN, correct));
+    S.round = [...Array(n).fill(true), ...Array(roundN - n).fill(false)];
+    S.qIndex = roundN - 1; S.locked = true; S.complete = true;
+    S.feedback = null; S.feedbackKind = null;
+    onRoundDone && onRoundDone(levelId, n);
+    refresh();
+  };
+  // Fire the streak celebration overlay as if the learner had chained N
+  // correct answers.
+  const debugCelebrate = (streak) => { onMilestone && onMilestone(streak); };
+
   return {
     state: S,
-    actions: { pickOption, check, next, setHandAngle, setActiveHand, startRound },
+    actions: { pickOption, check, next, setHandAngle, setActiveHand, startRound,
+               debugCompleteRound, debugCelebrate },
   };
 }
 
@@ -447,7 +464,7 @@ function Clock({
   activeHand = "minute",
   onSetAngle,
   onPickHand,
-  numeralFont = 'Fredoka, system-ui',
+  numeralFont = 'Nunito, system-ui',
   numeralWeight = 500,
   numeralSize,
   tickThickness = 2,
@@ -820,13 +837,9 @@ function LevelTrack({ levelId, setLevelId, mastery, accent, ink, soft, trackBg, 
         <span>Level {String(levelId+1).padStart(2,'0')} / {LEVELS.length}</span>
         <span>{curMastery ? `${curMastery.best}/10${curMastery.tier === 3 ? ' 🌼' : ''}` : '—'}</span>
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, marginTop: 2 }}>
-        <div style={{ fontFamily: 'Fredoka, sans-serif', fontWeight: 600, fontSize: 16, color: ink, letterSpacing: '-0.01em' }}>
-          {current.title}
-        </div>
-        <div style={{ fontFamily: 'Nunito, sans-serif', fontStyle: 'italic', fontSize: 12, color: soft, textAlign: 'right' }}>
-          {current.sub}
-        </div>
+      <div style={{ fontFamily: 'Nunito, sans-serif', fontWeight: 700, fontSize: 16,
+        color: ink, letterSpacing: '-0.01em', marginTop: 2 }}>
+        {current.title}
       </div>
 
       <div ref={trackRef}
@@ -1034,7 +1047,7 @@ function Body({ S, actions, level, c, theme, font, labelFont, accent }) {
 
 function RoundComplete({ c, accent, font, correct, tier, onAgain, onNext, hasNext }) {
   const msg = tier === 3 ? 'Perfekt! Eine Narzisse für dich.' :
-              tier === 2 ? 'Fast perfekt — eine Knospe!' :
+              tier === 2 ? 'Fast perfekt — eine Blüte!' :
               tier === 1 ? 'Gut gemacht, ein erster Spross.' :
               'Versuch es noch einmal.';
   return <div style={{ textAlign: 'center', padding: '30px 0 16px' }}>
@@ -1069,27 +1082,49 @@ function RoundComplete({ c, accent, font, correct, tier, onAgain, onNext, hasNex
   </div>;
 }
 
+function Daffodil({ size = 160 }) {
+  // Large, reusable daffodil illustration — six pale-yellow petals, amber
+  // trumpet, warm highlight. Used in the streak celebration and (via the
+  // same palette) by LevelIcon tier 3.
+  return <svg viewBox="0 0 200 200" width={size} height={size}
+    style={{ display: 'block' }}>
+    <defs>
+      <radialGradient id="daffo-petal" cx="0.35" cy="0.3" r="0.9">
+        <stop offset="0%" stopColor="#fff4c4"/>
+        <stop offset="55%" stopColor="#ffd54f"/>
+        <stop offset="100%" stopColor="#f6b13a"/>
+      </radialGradient>
+      <radialGradient id="daffo-cup" cx="0.3" cy="0.3" r="0.9">
+        <stop offset="0%" stopColor="#ffc94d"/>
+        <stop offset="55%" stopColor="#ff8f00"/>
+        <stop offset="100%" stopColor="#c76a00"/>
+      </radialGradient>
+    </defs>
+    {[0,60,120,180,240,300].map(a => {
+      const rad = (a - 90) * Math.PI/180;
+      const cx = 100 + 48*Math.cos(rad);
+      const cy = 100 + 48*Math.sin(rad);
+      return <ellipse key={a} cx={cx} cy={cy} rx="32" ry="18"
+        fill="url(#daffo-petal)" stroke="#c76a00" strokeWidth="1.8"
+        transform={`rotate(${a} ${cx} ${cy})`} />;
+    })}
+    <circle cx="100" cy="100" r="24" fill="url(#daffo-cup)" stroke="#8a4500" strokeWidth="1.8"/>
+    <circle cx="92" cy="93" r="5.5" fill="#ffe082" opacity="0.85"/>
+  </svg>;
+}
+
 function Celebrate({ streak, c, accent }) {
   return <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center',
     justifyContent: 'center', zIndex: 50, pointerEvents: 'none' }}>
     <div style={{ position: 'absolute', inset: 0,
       background: `radial-gradient(circle at 50% 50%, ${c.accentSoft} 0%, transparent 65%)` }} />
-    <svg viewBox="0 0 200 200" width={160} height={160}
-      style={{ animation: 'clockPop 1.6s cubic-bezier(.34,1.56,.64,1)', position: 'relative' }}>
-      <g stroke={accent} strokeWidth="5" strokeLinecap="round">
-        {[0,45,90,135,180,225,270,315].map(a => {
-          const rad = (a - 90) * Math.PI/180;
-          const x1 = 100 + 78*Math.cos(rad), y1 = 100 + 78*Math.sin(rad);
-          const x2 = 100 + 92*Math.cos(rad), y2 = 100 + 92*Math.sin(rad);
-          return <line key={a} x1={x1} y1={y1} x2={x2} y2={y2} />;
-        })}
-      </g>
-      <circle cx="100" cy="100" r="48" fill="#fcc419" stroke={accent} strokeWidth="4"/>
-      <path d="M80 102 Q100 122 120 102" fill="none" stroke={c.ink} strokeWidth="4" strokeLinecap="round"/>
-      <circle cx="86" cy="92" r="4" fill={c.ink}/><circle cx="114" cy="92" r="4" fill={c.ink}/>
-    </svg>
-    <div style={{ position: 'absolute', bottom: '32%', fontFamily: 'Fredoka, sans-serif',
-      fontWeight: 700, fontSize: 24, color: accent }}>
+    <div style={{ animation: 'clockPop 1.6s cubic-bezier(.34,1.56,.64,1)', position: 'relative',
+      filter: 'drop-shadow(0 6px 18px rgba(0,0,0,0.18))' }}>
+      <Daffodil size={160} />
+    </div>
+    <div style={{ position: 'absolute', bottom: '32%', fontFamily: 'Nunito, sans-serif',
+      fontWeight: 800, fontSize: 24, letterSpacing: '-0.01em', color: accent,
+      textShadow: '0 1px 2px rgba(0,0,0,0.12)' }}>
       {streak === 10 ? 'Zehn am Stück!' : 'Fünf am Stück!'}
     </div>
   </div>;
@@ -1195,6 +1230,36 @@ function NowLogo({ size = 30, T, accent }) {
   </div>;
 }
 
+// ============================================================
+// DEBUG STRIP — temporary. Fires the various achievement screens without
+// actually playing a round. Drop this component + its render site when the
+// mastery flow is signed off.
+// ============================================================
+function DebugStrip({ c, game }) {
+  const btn = {
+    fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.12em',
+    textTransform: 'uppercase', padding: '6px 10px', borderRadius: 8,
+    background: c.glass.fill, color: c.soft,
+    border: `1px solid ${c.glass.edge}`, cursor: 'pointer',
+    boxShadow: `inset 0 1px 0 ${c.glass.shine}`,
+  };
+  return <div style={{
+    marginTop: 28, paddingTop: 10,
+    borderTop: `1px dashed ${c.ink}33`,
+    display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center',
+  }}>
+    <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9,
+      letterSpacing: '0.2em', textTransform: 'uppercase', color: c.soft }}>Debug</span>
+    {[10, 9, 8, 7, 5, 0].map(n =>
+      <button key={n} style={btn} onClick={() => game.actions.debugCompleteRound(n)}>
+        {n}/10
+      </button>
+    )}
+    <button style={btn} onClick={() => game.actions.debugCelebrate(5)}>Streak 5↑</button>
+    <button style={btn} onClick={() => game.actions.debugCelebrate(10)}>Streak 10↑</button>
+  </div>;
+}
+
 function UhrzeitApp() {
   const { mastery, record, reset } = useMastery();
   const { id: themeId, resolvedId: resolvedThemeId, setId: setThemeId, T } = useTheme();
@@ -1242,10 +1307,7 @@ function UhrzeitApp() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10,
           fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.2em',
           textTransform: 'uppercase', color: c.soft }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <NowLogo size={28} T={T} accent={accent} />
-            <span>№ {String(S.qIndex+1).padStart(2,'0')} / {String(S.roundN).padStart(2,'0')}</span>
-          </div>
+          <NowLogo size={28} T={T} accent={accent} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span>{S.score} Pkt · <span style={{ color: accent }}>{S.streak}↑</span></span>
             <ThemePicker id={themeId} resolvedId={resolvedThemeId} setId={setThemeId} T={T} />
@@ -1268,13 +1330,15 @@ function UhrzeitApp() {
         </div>
 
         {S.complete ?
-          <RoundComplete c={c} accent={accent} font="Fredoka, sans-serif"
+          <RoundComplete c={c} accent={accent} font="Nunito, sans-serif"
             correct={roundCorrect} tier={roundTier}
             onAgain={game.actions.startRound}
             onNext={() => setLevelId(Math.min(LEVELS.length - 1, levelId + 1))}
             hasNext={levelId < LEVELS.length - 1} /> :
           <Body S={S} actions={game.actions} level={level} c={c} theme={theme}
-            accent={accent} font="Fredoka, sans-serif" labelFont="JetBrains Mono" />}
+            accent={accent} font="Nunito, sans-serif" labelFont="JetBrains Mono" />}
+
+        <DebugStrip c={c} game={game} />
       </div>
       {celeb && <Celebrate streak={celeb} c={c} accent={accent} />}
     </div>
