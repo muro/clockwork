@@ -118,38 +118,17 @@ const GLASS = {
 const blob = (pos, color, size = '55%') =>
   `radial-gradient(circle at ${pos}, ${color} 0%, transparent ${size})`;
 
-// Hand shapes — SVG path/element builders. Each builder draws a hand starting
-// at the clock centre (0,0) extending upward to (0,-L). The outer renderer
-// rotates the whole thing into position.
-const HAND_SHAPES = {
-  spitz: {
-    label: 'Spitz',
-    draw: (w, L) => {
-      const b = w * 1.15;
-      const d =
-        `M ${-b/2} 0 L ${b/2} 0 ` +
-        `L ${w*0.28} ${-L*0.88} Q 0 ${-L} ${-w*0.28} ${-L*0.88} Z`;
-      return <path d={d} />;
-    },
-  },
-  blatt: {
-    label: 'Blatt',
-    draw: (w, L) => {
-      // Slim teardrop — widest point sits at ~20% from the base at roughly
-      // 1.15·w, then curves in cleanly to a pointed tip. Thinner than the
-      // previous leaf shape so it doesn't read as clunky.
-      const wide = w * 1.15;
-      const d =
-        `M 0 0 ` +
-        `C ${wide} ${-L*0.18} ${w*0.32} ${-L*0.92} 0 ${-L} ` +
-        `C ${-w*0.32} ${-L*0.92} ${-wide} ${-L*0.18} 0 0 Z`;
-      return <path d={d} />;
-    },
-  },
-};
+// Hand shape — single tapered pointer (Spitz). Drawn starting at clock centre
+// (0,0) extending upward to (0,-L); the outer renderer rotates it.
+function drawSpitz(w, L) {
+  const b = w * 1.15;
+  return <path d={
+    `M ${-b/2} 0 L ${b/2} 0 ` +
+    `L ${w*0.28} ${-L*0.88} Q 0 ${-L} ${-w*0.28} ${-L*0.88} Z`
+  } />;
+}
 
-function Hand({ shape, width, length, color, angle, transition, zIndex = 2 }) {
-  const S = HAND_SHAPES[shape] || HAND_SHAPES.slab;
+function Hand({ width, length, color, angle, transition, zIndex = 2 }) {
   // SVG is centred on the wrapper; viewBox extends far enough to show any
   // shape's overhang (disc, arrow tip). overflow:visible keeps it lenient.
   const pad = Math.max(width * 4, 14);
@@ -171,84 +150,10 @@ function Hand({ shape, width, length, color, angle, transition, zIndex = 2 }) {
           filter: 'drop-shadow(0 1px 1.5px rgba(0,0,0,0.22))',
         }}
       >
-        <g fill={color} stroke="none">{S.draw(width, length)}</g>
+        <g fill={color} stroke="none">{drawSpitz(width, length)}</g>
       </svg>
     </div>
   );
-}
-
-const HAND_KEY = 'uhrzeit.hands';
-const DEFAULT_HANDS = { hour: 'spitz', minute: 'blatt' };
-function useHands() {
-  const [h, setH] = React.useState(() => {
-    try {
-      const raw = localStorage.getItem(HAND_KEY);
-      const v = raw ? JSON.parse(raw) : null;
-      return v && HAND_SHAPES[v.hour] && HAND_SHAPES[v.minute] ? v : DEFAULT_HANDS;
-    } catch { return DEFAULT_HANDS; }
-  });
-  const set = (key, value) => {
-    setH(prev => {
-      const next = { ...prev, [key]: value };
-      try { localStorage.setItem(HAND_KEY, JSON.stringify(next)); } catch {}
-      return next;
-    });
-  };
-  return { hands: h, setHourShape: v => set('hour', v), setMinuteShape: v => set('minute', v) };
-}
-
-function HandPreview({ shapeKey, selected, onClick, color, T }) {
-  const S = HAND_SHAPES[shapeKey];
-  return <button onClick={onClick} aria-label={S.label} title={S.label}
-    style={{
-      width: 34, height: 34, padding: 0,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: selected ? T.accentSoft : 'transparent',
-      border: selected ? `1.5px solid ${color}` : `1px solid ${T.ink}2b`,
-      borderRadius: 9, cursor: 'pointer',
-      transition: 'background .15s, border-color .15s',
-    }}>
-    <svg width="22" height="24" viewBox="-12 -22 24 25" overflow="visible" style={{ display: 'block' }}>
-      <g fill={color}>{S.draw(2.4, 18)}</g>
-      <circle cx="0" cy="0" r="1.8" fill={color} />
-    </svg>
-  </button>;
-}
-
-function SettingsPanel({ hands, setHourShape, setMinuteShape, T, accent, c, onClose }) {
-  const g = c.glass;
-  return <div style={{
-    margin: '8px 0 4px',
-    padding: '12px 14px',
-    borderRadius: 14,
-    background: g.fill, border: `1px solid ${g.edge}`,
-    boxShadow: `inset 0 1px 0 ${g.shine}, 0 1px 2px rgba(0,0,0,0.06), 0 8px 20px -8px rgba(0,0,0,0.14)`,
-    backdropFilter: 'blur(10px) saturate(140%)', WebkitBackdropFilter: 'blur(10px) saturate(140%)',
-  }}>
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-      fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.2em',
-      textTransform: 'uppercase', color: c.soft, marginBottom: 8 }}>
-      <span>Zeigerformen</span>
-      <button onClick={onClose} aria-label="Schließen"
-        style={{ background: 'transparent', border: 0, color: c.soft, fontSize: 14, cursor: 'pointer', padding: 0 }}>×</button>
-    </div>
-    {[
-      { key: 'hour',   label: 'Stundenzeiger',   cur: hands.hour,   set: setHourShape,   color: T.enamelInk },
-      { key: 'minute', label: 'Minutenzeiger',   cur: hands.minute, set: setMinuteShape, color: accent },
-    ].map(row => (
-      <div key={row.key} style={{ marginBottom: row.key === 'hour' ? 10 : 0 }}>
-        <div style={{ fontFamily: 'Nunito, sans-serif', fontSize: 12, fontStyle: 'italic',
-          color: c.soft, marginBottom: 5 }}>{row.label}</div>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {Object.keys(HAND_SHAPES).map(k =>
-            <HandPreview key={k} shapeKey={k}
-              selected={k === row.cur} onClick={() => row.set(k)}
-              color={row.color} T={T} />
-          )}
-        </div>
-      </div>
-    ))}
-  </div>;
 }
 
 const THEMES = {
@@ -290,11 +195,33 @@ function glassTokensFor(T) {
 const THEME_KEY = 'uhrzeit.theme';
 
 function useTheme() {
+  // id is the user's choice: 'auto' | 'koralle' | 'abend'. Auto means follow
+  // prefers-color-scheme; explicit picks win over the system and persist.
   const [id, setId] = React.useState(() => {
-    try { const v = localStorage.getItem(THEME_KEY); return THEMES[v] ? v : 'koralle'; }
-    catch { return 'koralle'; }
+    try {
+      const v = localStorage.getItem(THEME_KEY);
+      return v === 'auto' || THEMES[v] ? v : 'auto';
+    } catch { return 'auto'; }
   });
-  const T = THEMES[id] || THEMES.koralle;
+  const [systemDark, setSystemDark] = React.useState(() => {
+    try { return window.matchMedia('(prefers-color-scheme: dark)').matches; }
+    catch { return false; }
+  });
+  React.useEffect(() => {
+    try {
+      const mq = window.matchMedia('(prefers-color-scheme: dark)');
+      const handler = (e) => setSystemDark(e.matches);
+      if (mq.addEventListener) mq.addEventListener('change', handler);
+      else mq.addListener(handler); // Safari < 14
+      return () => {
+        if (mq.removeEventListener) mq.removeEventListener('change', handler);
+        else mq.removeListener(handler);
+      };
+    } catch {}
+  }, []);
+  const resolvedId = id === 'auto' ? (systemDark ? 'abend' : 'koralle') : id;
+  const T = THEMES[resolvedId] || THEMES.koralle;
+
   React.useEffect(() => {
     try { localStorage.setItem(THEME_KEY, id); } catch {}
     const root = document.documentElement;
@@ -309,21 +236,31 @@ function useTheme() {
     root.style.setProperty('--glass-under', g.under);
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute('content', T.bgBase);
-  }, [id]);
-  return { id, setId, T };
+  }, [id, resolvedId]);
+
+  return { id, resolvedId, setId, T };
 }
 
-function ThemePicker({ id, setId, T }) {
+function ThemePicker({ id, resolvedId, setId, T }) {
+  // 'auto' sits first as a half-split swatch so it reads as "both themes at
+  // once, pick whichever the OS wants right now".
+  const opts = [
+    { key: 'auto', label: 'Automatisch', bg:
+      `linear-gradient(135deg, ${THEMES.koralle.accent} 0 50%, ${THEMES.abend.accent} 50% 100%)` },
+    { key: 'koralle', label: 'Koralle', bg: THEMES.koralle.accent },
+    { key: 'abend',   label: 'Abend',   bg: THEMES.abend.accent },
+  ];
   return <div role="tablist" aria-label="Farbschema"
     style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
-    {Object.entries(THEMES).map(([key, th]) => {
-      const active = key === id;
-      return <button key={key} role="tab" aria-label={th.label} aria-selected={active}
-        title={th.label}
-        onClick={(e) => { e.stopPropagation(); setId(key); }}
+    {opts.map(o => {
+      const active = id === o.key;
+      const label = o.key === 'auto' ? `Automatisch (${resolvedId === 'abend' ? 'Abend' : 'Koralle'})` : o.label;
+      return <button key={o.key} role="tab" aria-label={label} aria-selected={active}
+        title={label}
+        onClick={(e) => { e.stopPropagation(); setId(o.key); }}
         style={{
           width: 14, height: 14, padding: 0, borderRadius: '50%',
-          background: th.accent, cursor: 'pointer',
+          background: o.bg, cursor: 'pointer',
           border: active ? `2px solid ${T.ink}` : `1px solid rgba(0,0,0,0.18)`,
           boxShadow: active
             ? `0 0 0 2px ${T.bgBase}, 0 1px 2px rgba(0,0,0,0.25)`
@@ -504,6 +441,7 @@ function Clock({
   size = 240,
   showNumerals = true,
   showMinorTicks = true,
+  highlightMinute = false,
   h = 12, m = 0,
   interactive = false,
   activeHand = "minute",
@@ -679,7 +617,12 @@ function Clock({
   // The minute the hand is currently "pointing at" — highlighted so the
   // learner can read off the exact minute, especially in 1-min-precision
   // levels where the hand lands between 5-min marks.
-  const activeMinute = ((Math.round(minAng / 6) % 60) + 60) % 60;
+  // Only track an active-minute tick when the level actually asks for 1-min
+  // precision. At 5/15/30-minute snapping the hand always lands on a major
+  // tick, so a coloured highlight there is just noise.
+  const activeMinute = highlightMinute
+    ? ((Math.round(minAng / 6) % 60) + 60) % 60
+    : -1;
   const ticks = [];
   for (let i = 0; i < 60; i++) {
     const major = i % 5 === 0;
@@ -704,7 +647,7 @@ function Clock({
     );
   }
 
-  const hourLen = Math.round(size * 0.26);
+  const hourLen = Math.round(size * 0.32);
   const minLen  = Math.round(size * 0.40);
   const hourW = Math.max(5, Math.round(size * 0.028));
   const minW  = Math.max(3, Math.round(size * 0.018));
@@ -751,10 +694,10 @@ function Clock({
       }} />
       {ticks}
       {numerals}
-      <Hand shape={theme.hourShape || 'spitz'} width={hourW} length={hourLen}
+      <Hand width={hourW} length={hourLen}
         color={theme.hourHand || '#1a1a1a'}
         angle={hourAng} transition={transition} zIndex={2} />
-      <Hand shape={theme.minuteShape || 'blatt'} width={minW} length={minLen}
+      <Hand width={minW} length={minLen}
         color={theme.minHand || '#e8590c'}
         angle={minAng} transition={transition} zIndex={3} />
       {/* Metallic pivot cap — small, highlit, seated between hand shadows and sheen. */}
@@ -1035,6 +978,7 @@ function Body({ S, actions, level, c, theme, font, labelFont, accent }) {
     <div style={{ display: 'flex', justifyContent: 'center', margin: '10px 0 12px' }}>
       <Clock theme={theme} size={clockSize}
         h={isRead ? h : S.setH} m={isRead ? m : S.setM}
+        highlightMinute={level.minuteSet === 'minute'}
         interactive={!isRead && !S.locked} activeHand={S.activeHand}
         onSetAngle={actions.setHandAngle} onPickHand={actions.setActiveHand}
         numeralFont={font} numeralWeight={500} />
@@ -1191,26 +1135,10 @@ function ResetIcon({ onReset, c, soft }) {
 // ============================================================
 // MAIN APP
 // ============================================================
-// Small glass icon button — gear / palette / anything else we park in the header.
-function HeaderIconButton({ onClick, ariaLabel, active, c, children }) {
-  return <button onClick={onClick} aria-label={ariaLabel} title={ariaLabel}
-    style={{
-      width: 26, height: 26, padding: 0, flexShrink: 0,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: active ? c.ink : c.glass.fill,
-      color: active ? c.paper : c.soft,
-      border: `1px solid ${active ? c.ink : c.glass.edge}`,
-      borderRadius: '50%', cursor: 'pointer',
-      boxShadow: `inset 0 1px 0 ${c.glass.shine}, 0 1px 2px rgba(0,0,0,0.08)`,
-      backdropFilter: 'blur(8px) saturate(140%)',
-      WebkitBackdropFilter: 'blur(8px) saturate(140%)',
-      transition: 'background .15s, color .15s, border-color .15s',
-    }}>{children}</button>;
-}
-
-// Small analog clock logo showing the current wall-clock time. Purely
-// decorative — not interactive, no numerals, subtle enamel face.
-function NowLogo({ size = 36, T, accent }) {
+// Small analog clock logo showing the current wall-clock time. Sits in the
+// header at low visual weight — just a hint, not a focal point. Built from
+// the soft/ink token at reduced opacity so it recedes into the page.
+function NowLogo({ size = 30, T, accent }) {
   const [t, setT] = React.useState(() => new Date());
   React.useEffect(() => {
     const id = setInterval(() => setT(new Date()), 15000);
@@ -1221,23 +1149,26 @@ function NowLogo({ size = 36, T, accent }) {
   const hourAng = h * 30 + m * 0.5;
   const minAng  = m * 6;
   const R = size / 2;
-  return <div aria-label="Aktuelle Uhrzeit" title={`${String(t.getHours()).padStart(2,'0')}:${String(m).padStart(2,'0')}`}
-    style={{ width: size, height: size, position: 'relative', flexShrink: 0 }}>
+  const inkSoft = `${T.ink}73`;   // ~0.45 alpha — borders and ticks
+  const inkHand = `${T.ink}a6`;   // ~0.65 alpha — hands, still readable
+  return <div aria-label="Aktuelle Uhrzeit"
+    title={`${String(t.getHours()).padStart(2,'0')}:${String(m).padStart(2,'0')}`}
+    style={{ width: size, height: size, position: 'relative', flexShrink: 0, opacity: 0.7 }}>
     <div style={{
       position: 'absolute', inset: 0, borderRadius: '50%',
-      background: T.enamel, border: `1.2px solid ${T.enamelEdge}`,
-      boxShadow: 'inset 0 1px 1.5px rgba(255,255,255,0.5), 0 1px 2px rgba(0,0,0,0.12), 0 4px 10px -4px rgba(0,0,0,0.18)',
+      background: 'transparent',
+      border: `1px solid ${inkSoft}`,
     }} />
     {[0,3,6,9].map(i => {
       const a = (i / 12) * 360;
       const rad = (a - 90) * Math.PI / 180;
-      const len = size * 0.13;
+      const len = size * 0.10;
       const inner = R - len;
       const x1 = R + inner * Math.cos(rad), y1 = R + inner * Math.sin(rad);
-      const x2 = R + (R - 2) * Math.cos(rad), y2 = R + (R - 2) * Math.sin(rad);
+      const x2 = R + (R - 1) * Math.cos(rad), y2 = R + (R - 1) * Math.sin(rad);
       return <svg key={i} width={size} height={size}
         style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-        <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={T.enamelInk} strokeWidth="1.2" strokeLinecap="round"/>
+        <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={inkSoft} strokeWidth="0.8" strokeLinecap="round"/>
       </svg>;
     })}
     <div style={{
@@ -1245,30 +1176,28 @@ function NowLogo({ size = 36, T, accent }) {
       width: 0, height: 0, transformOrigin: '0 0',
       transform: `rotate(${hourAng}deg)`,
     }}>
-      <div style={{ position: 'absolute', width: 2, height: size * 0.27,
-        left: -1, top: -size * 0.27, background: T.enamelInk, borderRadius: 1 }} />
+      <div style={{ position: 'absolute', width: 1.3, height: size * 0.28,
+        left: -0.65, top: -size * 0.28, background: inkHand, borderRadius: 1 }} />
     </div>
     <div style={{
       position: 'absolute', left: '50%', top: '50%',
       width: 0, height: 0, transformOrigin: '0 0',
       transform: `rotate(${minAng}deg)`,
     }}>
-      <div style={{ position: 'absolute', width: 1.4, height: size * 0.38,
-        left: -0.7, top: -size * 0.38, background: accent, borderRadius: 1 }} />
+      <div style={{ position: 'absolute', width: 1, height: size * 0.4,
+        left: -0.5, top: -size * 0.4, background: inkHand, borderRadius: 1 }} />
     </div>
     <div style={{
       position: 'absolute', left: '50%', top: '50%',
-      width: 3, height: 3, margin: '-1.5px 0 0 -1.5px',
-      background: T.enamelInk, borderRadius: '50%',
+      width: 2, height: 2, margin: '-1px 0 0 -1px',
+      background: inkHand, borderRadius: '50%',
     }} />
   </div>;
 }
 
 function UhrzeitApp() {
   const { mastery, record, reset } = useMastery();
-  const { id: themeId, setId: setThemeId, T } = useTheme();
-  const { hands, setHourShape, setMinuteShape } = useHands();
-  const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const { id: themeId, resolvedId: resolvedThemeId, setId: setThemeId, T } = useTheme();
   const [levelId, setLevelId] = React.useState(() => {
     try { return parseInt(localStorage.getItem(LEVEL_KEY) || '0', 10) || 0; }
     catch { return 0; }
@@ -1299,7 +1228,6 @@ function UhrzeitApp() {
     numeral: T.enamelInk, hourHand: T.enamelInk, minHand: accent,
     tickColor: T.enamelInk, tickMinor: T.tickMinor, pivot: T.enamelInk,
     tickActive: accent,
-    hourShape: hands.hour, minuteShape: hands.minute,
     dark: !!T.dark,
   };
 
@@ -1315,26 +1243,15 @@ function UhrzeitApp() {
           fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.2em',
           textTransform: 'uppercase', color: c.soft }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <NowLogo size={34} T={T} accent={accent} />
+            <NowLogo size={28} T={T} accent={accent} />
             <span>№ {String(S.qIndex+1).padStart(2,'0')} / {String(S.roundN).padStart(2,'0')}</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span>{S.score} Pkt · <span style={{ color: accent }}>{S.streak}↑</span></span>
-            <ThemePicker id={themeId} setId={setThemeId} T={T} />
-            <HeaderIconButton c={c} active={settingsOpen}
-              ariaLabel={settingsOpen ? 'Einstellungen schließen' : 'Einstellungen'}
-              onClick={() => setSettingsOpen(v => !v)}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="3"/>
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-              </svg>
-            </HeaderIconButton>
+            <ThemePicker id={themeId} resolvedId={resolvedThemeId} setId={setThemeId} T={T} />
             <ResetIcon onReset={handleReset} c={c} soft={c.soft} />
           </div>
         </div>
-        {settingsOpen && <SettingsPanel hands={hands} setHourShape={setHourShape}
-          setMinuteShape={setMinuteShape} T={T} accent={accent} c={c}
-          onClose={() => setSettingsOpen(false)} />}
 
         <div style={{ display: 'flex', gap: 3, marginTop: 10 }}>
           {Array.from({length: S.roundN}, (_,i) => {
