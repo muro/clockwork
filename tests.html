@@ -251,12 +251,51 @@ group('exercise: lesen', () => {
       }
     });
   }
-  test('24h options include both AM and PM twin (12h-offset)', () => {
+  test('24h options stay in the same half-day as the answer (no 6:40 vs 18:40 trap)', () => {
+    // On a clock face you can't tell AM from PM — so 24h options must
+    // never include the 12-hour twin of the correct answer.
     const level = { mode: 'lesen', minuteSet: 'fuenf', hour24: true };
-    const q = { h: 2, m: 30, dh: 14, parsed: parseTime(2, 30) };
-    const { options } = buildDigitalOptions(q, level);
-    contains(options, '14:30');
-    contains(options, '2:30');
+    const cases = [
+      { h: 6, m: 40, dh: 18, twin: '6:40'  },  // PM answer — AM twin forbidden
+      { h: 2, m: 30, dh: 14, twin: '2:30'  },
+      { h: 6, m: 40, dh: 6,  twin: '18:40' },  // AM answer — PM twin forbidden
+      { h: 12, m: 0, dh: 12, twin: '0:00'  },  // noon — midnight forbidden
+      { h: 12, m: 0, dh: 0,  twin: '12:00' },  // midnight — noon forbidden
+    ];
+    for (const { h, m, dh, twin } of cases) {
+      const q = { h, m, dh, parsed: parseTime(h, m) };
+      const { options } = buildDigitalOptions(q, level);
+      contains(options, digitalFromQ(q), `answer present dh=${dh}`);
+      ok(!options.includes(twin), `twin "${twin}" forbidden for dh=${dh} — got ${JSON.stringify(options)}`);
+      // Every option must sit in the same half-day as the answer.
+      const pmHalf = dh >= 12;
+      for (const o of options) {
+        const oh = parseInt(o.split(':')[0], 10);
+        const oPm = oh >= 12;
+        eq(oPm, pmHalf, `option "${o}" wrong half-day for dh=${dh}`);
+      }
+    }
+  });
+  test('24h sweep — answer always present, all options same half-day, no 12h twin', () => {
+    const level = { mode: 'lesen', minuteSet: 'fuenf', hour24: true };
+    // Try every (dh in 0..23, m in fuenf). The half-day invariant must hold
+    // for all of them; twin check is conditional (twin differs from answer
+    // except at noon/midnight edges, already covered above).
+    for (let dh = 0; dh < 24; dh++) {
+      for (const m of MINUTE_SETS.fuenf) {
+        const h = dh === 0 ? 12 : dh > 12 ? dh - 12 : dh;
+        const q = { h, m, dh, parsed: parseTime(h, m) };
+        const { options } = buildDigitalOptions(q, level);
+        eq(options.length, 4, `dh=${dh} m=${m}`);
+        eq(new Set(options).size, 4, `unique dh=${dh} m=${m}`);
+        contains(options, digitalFromQ(q), `answer dh=${dh} m=${m}`);
+        const pmHalf = dh >= 12;
+        for (const o of options) {
+          const oh = parseInt(o.split(':')[0], 10);
+          ok((oh >= 12) === pmHalf, `half-day dh=${dh} m=${m} option=${o}`);
+        }
+      }
+    }
   });
 });
 

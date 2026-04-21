@@ -69,13 +69,39 @@ function buildDigitalOptions(q, level) {
   const correct = digitalFromQ(q);
   const opts = new Set([correct]);
   const mins = MINUTE_SETS[level.minuteSet];
-  const hoursPool = level.hour24
-    ? [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]
-    : [1,2,3,4,5,6,7,8,9,10,11,12];
+
   if (level.hour24) {
-    const alt = q.dh < 12 ? (q.dh + 12) % 24 : q.dh - 12;
-    if (alt !== q.dh) opts.add(`${alt}:${String(q.m).padStart(2,'0')}`);
+    // In 24h mode, the clock face can't distinguish AM from PM — so a
+    // question with correct "18:40" must never offer "6:40" as an option,
+    // since both are valid readings of the same face. Restrict the whole
+    // pool of distractors to the same half-day as the answer.
+    const pmHalf = q.dh >= 12;
+    const hoursPool = pmHalf
+      ? [12,13,14,15,16,17,18,19,20,21,22,23]
+      : [0,1,2,3,4,5,6,7,8,9,10,11];
+    // Adjacent-hour confusion, wrapping within the half.
+    const lastOfHalf = pmHalf ? 23 : 11;
+    const firstOfHalf = pmHalf ? 12 : 0;
+    const nextH = q.dh === lastOfHalf ? firstOfHalf : q.dh + 1;
+    opts.add(`${nextH}:${String(q.m).padStart(2,'0')}`);
+    // Minute-hand hour confusion (5-min multiples only), mapped into the
+    // correct half-day.
+    const mh12 = q.m === 0 ? 12 : q.m / 5;
+    if (Number.isInteger(mh12)) {
+      const mh = pmHalf ? (mh12 === 12 ? 12 : mh12 + 12) : (mh12 === 12 ? 0 : mh12);
+      if (mh !== q.dh) opts.add(`${mh}:${String(q.m).padStart(2,'0')}`);
+    }
+    let guard = 0;
+    while (opts.size < 4 && guard++ < 60) {
+      const rh = pickRandom(hoursPool);
+      const rm = pickRandom(mins);
+      opts.add(`${rh}:${String(rm).padStart(2,'0')}`);
+    }
+    return { options: shuffle([...opts].slice(0, 4)) };
   }
+
+  // 12h mode — hours 1..12 only.
+  const hoursPool = [1,2,3,4,5,6,7,8,9,10,11,12];
   // "minute-hand hour" confusion: if minute-hand points at the 3, swap with
   // hour=3. Only makes sense for 5-minute multiples; skip for arbitrary minutes.
   const mh = q.m === 0 ? 12 : q.m / 5;
