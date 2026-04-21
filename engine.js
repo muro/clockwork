@@ -205,8 +205,10 @@ function makeQuestion(level, rand = Math.random) {
   const m = mins[Math.floor(rand()*mins.length)];
   let dh = h;
   if (level.hour24) {
-    const pm = rand() < 0.5;
-    dh = pm ? (h === 12 ? 12 : h + 12) : (h === 12 ? 0 : h);
+    // 24h levels always render as PM (12..23) — the AM half is just 12h
+    // notation dressed up, which earlier levels already cover. Training
+    // only PM here keeps every question in the "new" half-day.
+    dh = h === 12 ? 12 : h + 12;
   }
   return { h, m, dh, parsed: parseTime(h, m) };
 }

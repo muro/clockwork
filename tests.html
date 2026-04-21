@@ -382,7 +382,15 @@ group('transitions between exercises', () => {
       ok(q.h >= 1 && q.h <= 12, `h in range (${level.title})`);
       ok(MINUTE_SETS[level.minuteSet].includes(q.m), `m in minuteSet (${level.title})`);
       eq(q.parsed.fullWord, parseTime(q.h, q.m).fullWord, `parsed consistent (${level.title})`);
-      if (level.hour24) ok(q.dh >= 0 && q.dh <= 23, `24h dh in range (${level.title})`);
+      if (level.hour24) ok(q.dh >= 12 && q.dh <= 23, `24h dh PM-only (${level.title})`);
+    }
+  });
+  test('24h levels are PM-only — dh lands in 12..23 over many draws', () => {
+    const level = LEVELS.find(l => l.hour24);
+    ok(level, '24h level exists');
+    for (let i = 0; i < 60; i++) {
+      const q = makeQuestion(level);
+      ok(q.dh >= 12 && q.dh <= 23, `draw ${i} dh=${q.dh}`);
     }
   });
   test('switching levels picks a different mode', () => {
