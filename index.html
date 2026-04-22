@@ -11,6 +11,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,400;0,600;0,700;0,800;1,400;1,600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="preload" as="image" href="dandelion_single.png">
+<link rel="preload" as="image" href="dandelion_gone.png">
+<link rel="preload" as="image" href="dandelion_many.png">
+<link rel="preload" as="image" href="dandelion_small.png">
 <style>
   :root {
     color-scheme: light;
@@ -51,13 +55,23 @@
     60% { transform: scale(1.1) rotate(10deg); }
     100% { transform: scale(1) rotate(0deg); }
   }
-  /* Correct-answer flourish: dandelion blooms from the clock centre,
-     grows past the face and fades out. */
+  /* Correct-answer flourish: springs in past full size with a bit of rotation
+     and settles at scale 1, then fades out. Scale range stays ≤ 1.1× so the
+     compositor can keep the bloom on a single GPU layer — wider ranges show
+     visible stepping as the browser re-rasters the scaled bitmap. */
   @keyframes dandelionPop {
-    0%   { transform: scale(0.35); opacity: 0; }
-    18%  { transform: scale(1.0);  opacity: 1; }
-    60%  { transform: scale(1.45); opacity: 0.75; }
-    100% { transform: scale(1.9);  opacity: 0; }
+    0%   { transform: scale(0) rotate(-20deg); opacity: 0; }
+    30%  { transform: scale(1.1) rotate(10deg); opacity: 1; }
+    60%  { transform: scale(1) rotate(0deg); opacity: 1; }
+    100% { transform: scale(1) rotate(0deg); opacity: 0; }
+  }
+  /* Wrong-answer note: the "gone" dandelion drifts in gently, sits, and
+     fades — no bounce, no growth. */
+  @keyframes dandelionFade {
+    0%   { transform: scale(0.9);  opacity: 0; }
+    25%  { transform: scale(1.0);  opacity: 0.95; }
+    70%  { transform: scale(1.02); opacity: 0.85; }
+    100% { transform: scale(1.05); opacity: 0; }
   }
   .app-shell {
     max-width: 460px;
@@ -755,8 +769,10 @@ function LevelIcon({ tier, active, accent, ink, paper, fillProgress = 0, review 
   const size = active ? 28 : 22;
   // Review stops render a distinct "rosette" medallion instead of the growth
   // icons. Mastery is shown by the centre fill; the surrounding dot-ring
-  // flags the stop as a checkpoint at a glance.
-  if (review) {
+  // flags the stop as a checkpoint at a glance. Once mastered (tier 3), the
+  // rosette gives way to the dandelion bloom — same reward as a plain level,
+  // so fully-mastered stops read consistently across the track.
+  if (review && tier < 3) {
     const box = size + 10;
     const ringActive = tier >= 1 || active;
     const dotColor = ringActive ? accent : `${ink}55`;
@@ -771,7 +787,6 @@ function LevelIcon({ tier, active, accent, ink, paper, fillProgress = 0, review 
         stroke={active ? accent : `${ink}55`} strokeWidth={active ? 2 : 1.2}/>
       {tier >= 1 && <circle cx="16" cy="16" r="4" fill={accent}/>}
       {tier >= 2 && <circle cx="14" cy="14" r="1.6" fill={paper} opacity="0.85"/>}
-      {tier === 3 && <circle cx="16" cy="16" r="2" fill={paper}/>}
     </svg>;
   }
   if (tier === 0) {
@@ -814,64 +829,77 @@ function LevelIcon({ tier, active, accent, ink, paper, fillProgress = 0, review 
       <path d="M16 19 Q19 18 20 15" fill="none" stroke="#558b2f" strokeWidth="1" strokeLinecap="round"/>
     </svg>;
   }
-  // Tier 3 — small Löwenzahn. Two rings of thin radial rays instead of the
-  // chunky 6-petal flower; keeps the visual read consistent with the big
-  // Dandelion used in the celebration / round-complete.
-  return <svg width={size+10} height={size+10} viewBox="0 0 32 32" style={{ display: 'block' }}>
-    <circle cx="16" cy="16" r="15" fill={paper} stroke={active ? accent : `${ink}46`} strokeWidth={active?2.5:1.5}/>
-    {Array.from({length: 16}, (_, i) => (i / 16) * 360).map(a => {
-      const rad = (a - 90) * Math.PI/180;
-      const cx = 16 + 6.5*Math.cos(rad), cy = 16 + 6.5*Math.sin(rad);
-      return <ellipse key={`o${a}`} cx={cx} cy={cy} rx="1.3" ry="5.5"
-        fill="#ffd54f" stroke="#a34200" strokeWidth="0.35"
-        transform={`rotate(${a} ${cx} ${cy})`} />;
-    })}
-    {Array.from({length: 12}, (_, i) => (i / 12) * 360 + 15).map(a => {
-      const rad = (a - 90) * Math.PI/180;
-      const cx = 16 + 4.5*Math.cos(rad), cy = 16 + 4.5*Math.sin(rad);
-      return <ellipse key={`i${a}`} cx={cx} cy={cy} rx="1" ry="3.8"
-        fill="#ffd54f" stroke="#a34200" strokeWidth="0.3" opacity="0.9"
-        transform={`rotate(${a} ${cx} ${cy})`} />;
-    })}
-    <circle cx="16" cy="16" r="3" fill="#f59f00" stroke="#6b2900" strokeWidth="0.5"/>
-    <circle cx="15" cy="15" r="1" fill="#ffe082"/>
-  </svg>;
+  // Tier 3 — fully mastered: show the bloom artwork. Sized slightly larger
+  // than lower tiers (size+10) so the reward reads at a glance, and ringed
+  // with the accent when active to match the other tiers' focus treatment.
+  const dim = size + 10;
+  return <div style={{
+    width: dim, height: dim, borderRadius: '50%',
+    background: paper,
+    border: active ? `2.5px solid ${accent}` : `1.5px solid ${ink}46`,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    boxSizing: 'border-box', overflow: 'hidden',
+  }}>
+    <img src="dandelion_small.png" alt="" width={dim - 4} height={dim - 4}
+      style={{ display: 'block' }} />
+  </div>;
 }
 
 // ============================================================
 // LEVEL TRACK
 // ============================================================
 function LevelTrack({ levelId, setLevelId, mastery, accent, ink, soft, trackBg, paper }) {
-  const trackRef = React.useRef(null);
-  const [drag, setDrag] = React.useState(false);
+  // Two-row snake: row 0 runs left→right, a U-turn on the right connects down,
+  // row 1 runs right→left. Keeps the 20 stops at a comfortable gap even on a
+  // narrow phone, and the curve gives a clear sense of progression.
+  const hostRef = React.useRef(null);
+  const [width, setWidth] = React.useState(0);
+  React.useLayoutEffect(() => {
+    if (!hostRef.current) return;
+    const measure = () => setWidth(hostRef.current?.getBoundingClientRect().width || 0);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(hostRef.current);
+    return () => ro.disconnect();
+  }, []);
 
-  const handleAt = (clientX) => {
-    const r = trackRef.current.getBoundingClientRect();
-    const t = Math.max(0, Math.min(1, (clientX - r.left) / r.width));
-    setLevelId(Math.round(t * (LEVELS.length - 1)));
-  };
-  const onDown = (e) => {
-    e.preventDefault(); setDrag(true);
-    const p = e.touches ? e.touches[0] : e;
-    handleAt(p.clientX);
-  };
-  React.useEffect(() => {
-    if (!drag) return;
-    const move = (e) => { const p = e.touches ? e.touches[0] : e; handleAt(p.clientX); };
-    const up = () => setDrag(false);
-    document.addEventListener('mousemove', move);
-    document.addEventListener('mouseup', up);
-    document.addEventListener('touchmove', move, { passive: false });
-    document.addEventListener('touchend', up);
-    return () => {
-      document.removeEventListener('mousemove', move);
-      document.removeEventListener('mouseup', up);
-      document.removeEventListener('touchmove', move);
-      document.removeEventListener('touchend', up);
-    };
-  }, [drag]);
+  const N = LEVELS.length;
+  const perRow = Math.ceil(N / 2);
+  const inset = 20;
+  const innerW = Math.max(0, width - inset * 2);
+  const gap = perRow > 1 ? innerW / (perRow - 1) : 0;
+  const rowSpacing = 44;
+  const rowY = [24, 24 + rowSpacing];
+  const height = rowY[1] + 24;
 
-  const pct = (levelId / (LEVELS.length - 1)) * 100;
+  const posOf = (i) => {
+    const row = Math.floor(i / perRow);
+    const col = i % perRow;
+    const x = row === 0
+      ? inset + col * gap
+      : inset + (perRow - 1 - col) * gap;
+    return { x, y: rowY[row] };
+  };
+
+  // Snake path: row-0 line → U-turn arc on the right → row-1 line.
+  const xRight = inset + (perRow - 1) * gap;
+  const pathD = width <= 0 ? '' : [
+    `M ${inset} ${rowY[0]}`,
+    `L ${xRight} ${rowY[0]}`,
+    `A ${rowSpacing / 2} ${rowSpacing / 2} 0 0 1 ${xRight} ${rowY[1]}`,
+    `L ${inset} ${rowY[1]}`,
+  ].join(' ');
+
+  // Normalised progress along the path: row-0 segments carry half the length,
+  // row-1 segments the other half, and the arc eats a small slice so the
+  // accent fill reads as "I'm on this stop". Cheap enough to eyeball.
+  const totalSegments = (perRow - 1) * 2 + 1;
+  const levelProgress = Math.min(1, Math.max(0,
+    levelId < perRow
+      ? levelId / totalSegments
+      : ((perRow - 1) + 1 + (levelId - perRow)) / totalSegments
+  ));
+
   const current = LEVELS[levelId];
   const curMastery = mastery[levelId];
 
@@ -888,23 +916,28 @@ function LevelTrack({ levelId, setLevelId, mastery, accent, ink, soft, trackBg, 
         {current.title}
       </div>
 
-      <div ref={trackRef}
-        onMouseDown={onDown} onTouchStart={onDown}
-        style={{ position: 'relative', height: 44, cursor: 'pointer', touchAction: 'none', marginTop: 10 }}>
-        <div style={{ position: 'absolute', left: 14, right: 14, top: 20, height: 2,
-          background: trackBg || `${ink}2b`, borderRadius: 1 }} />
-        <div style={{ position: 'absolute', left: 14,
-          width: `calc(${pct}% * (100% - 28px) / 100%)`, top: 20, height: 2,
-          background: accent, borderRadius: 1, transition: drag ? 'none' : 'width .25s' }} />
-        {LEVELS.map((lv, i) => {
-          const x = (i / (LEVELS.length - 1)) * 100;
+      <div ref={hostRef}
+        style={{ position: 'relative', height, marginTop: 10 }}>
+        {width > 0 && (
+          <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}
+            style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+            <path d={pathD} fill="none" stroke={trackBg || `${ink}2b`} strokeWidth="2"
+              strokeLinecap="round" />
+            <path d={pathD} fill="none" stroke={accent} strokeWidth="2"
+              strokeLinecap="round" pathLength="1"
+              strokeDasharray="1" strokeDashoffset={1 - levelProgress}
+              style={{ transition: 'stroke-dashoffset .25s' }} />
+          </svg>
+        )}
+        {width > 0 && LEVELS.map((lv, i) => {
+          const { x, y } = posOf(i);
           const tier = mastery[i]?.tier ?? 0;
           const active = i === levelId;
           return (
             <div key={i}
               onClick={(e) => { e.stopPropagation(); setLevelId(i); }}
-              style={{ position: 'absolute', left: `calc(14px + ${x}% * (100% - 28px) / 100%)`,
-                top: 21, transform: 'translate(-50%, -50%)',
+              style={{ position: 'absolute', left: x, top: y,
+                transform: 'translate(-50%, -50%)',
                 cursor: 'pointer', zIndex: active ? 3 : 2,
               }}>
               <LevelIcon tier={tier} active={active} accent={accent} ink={ink} paper={paper}
@@ -1062,10 +1095,29 @@ function Body({ S, actions, level, c, theme, font, labelFont, accent }) {
             position: 'absolute', inset: 0,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             pointerEvents: 'none', zIndex: 10,
-            animation: 'dandelionPop 1.1s cubic-bezier(.22,1,.36,1) forwards',
-            filter: 'drop-shadow(0 3px 10px rgba(0,0,0,0.18))',
+            animation: 'dandelionPop 1.6s cubic-bezier(.34,1.56,.64,1) forwards',
+            willChange: 'transform, opacity',
           }}>
-            <Dandelion size={Math.round(clockSize * 0.78)} />
+            <img src="dandelion_single.png" alt="" decoding="async"
+              width={Math.round(clockSize * 0.78)}
+              height={Math.round(clockSize * 0.78)}
+              style={{ display: 'block',
+                filter: 'drop-shadow(0 3px 10px rgba(0,0,0,0.18))' }} />
+          </div>
+        )}
+        {S.feedbackKind === 'wrong' && (
+          <div key={`fade-${S.qIndex}`} style={{
+            position: 'absolute', inset: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            pointerEvents: 'none', zIndex: 10,
+            animation: 'dandelionFade 1.4s ease-out forwards',
+            willChange: 'transform, opacity',
+          }}>
+            <img src="dandelion_gone.png" alt="" decoding="async"
+              width={Math.round(clockSize * 0.78)}
+              height={Math.round(clockSize * 0.78)}
+              style={{ display: 'block', willChange: 'transform',
+                filter: 'drop-shadow(0 3px 10px rgba(0,0,0,0.18))' }} />
           </div>
         )}
       </div>
@@ -1156,65 +1208,16 @@ function RoundComplete({ c, accent, font, correct, tier, onAgain, onNext, hasNex
   </div>;
 }
 
-function Dandelion({ size = 160 }) {
-  // Löwenzahn — two rings of thin tapered rays radiating from a warm amber
-  // disc. Per-instance gradient ids so multiple dandelions on the page
-  // don't collide in the <defs> lookup.
-  const uid = React.useMemo(() => 'd' + Math.random().toString(36).slice(2, 8), []);
-  const petalId = `${uid}-petal`;
-  const centerId = `${uid}-center`;
-  const cx = 100, cy = 100;
-  const outer = Array.from({ length: 20 }, (_, i) => (i / 20) * 360);
-  const inner = Array.from({ length: 16 }, (_, i) => (i / 16) * 360 + 11.25);
-  return <svg viewBox="0 0 200 200" width={size} height={size}
-    style={{ display: 'block' }}>
-    <defs>
-      <radialGradient id={petalId} cx="0.5" cy="0.2" r="0.85">
-        <stop offset="0%"  stopColor="#fff4bf"/>
-        <stop offset="55%" stopColor="#ffd54f"/>
-        <stop offset="100%" stopColor="#f6a825"/>
-      </radialGradient>
-      <radialGradient id={centerId} cx="0.3" cy="0.3" r="0.9">
-        <stop offset="0%"  stopColor="#ffe082"/>
-        <stop offset="55%" stopColor="#f59f00"/>
-        <stop offset="100%" stopColor="#a34200"/>
-      </radialGradient>
-    </defs>
-    {outer.map(a => {
-      const rad = (a - 90) * Math.PI/180;
-      const ex = cx + 52 * Math.cos(rad);
-      const ey = cy + 52 * Math.sin(rad);
-      return <ellipse key={`o${a}`} cx={ex} cy={ey} rx="4" ry="40"
-        fill={`url(#${petalId})`} stroke="#a34200" strokeWidth="0.5"
-        transform={`rotate(${a} ${ex} ${ey})`}/>;
-    })}
-    {inner.map(a => {
-      const rad = (a - 90) * Math.PI/180;
-      const ex = cx + 36 * Math.cos(rad);
-      const ey = cy + 36 * Math.sin(rad);
-      return <ellipse key={`i${a}`} cx={ex} cy={ey} rx="3.2" ry="28"
-        fill={`url(#${petalId})`} stroke="#a34200" strokeWidth="0.4"
-        opacity="0.95"
-        transform={`rotate(${a} ${ex} ${ey})`}/>;
-    })}
-    <circle cx={cx} cy={cy} r="15" fill={`url(#${centerId})`} stroke="#6b2900" strokeWidth="1"/>
-    <circle cx="94" cy="94" r="4" fill="#fff3b0" opacity="0.8"/>
-  </svg>;
-}
-
-function Celebrate({ streak, c, accent }) {
+function Celebrate({ c }) {
   return <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center',
     justifyContent: 'center', zIndex: 50, pointerEvents: 'none' }}>
     <div style={{ position: 'absolute', inset: 0,
       background: `radial-gradient(circle at 50% 50%, ${c.accentSoft} 0%, transparent 65%)` }} />
     <div style={{ animation: 'clockPop 1.6s cubic-bezier(.34,1.56,.64,1)', position: 'relative',
-      filter: 'drop-shadow(0 6px 18px rgba(0,0,0,0.18))' }}>
-      <Dandelion size={160} />
-    </div>
-    <div style={{ position: 'absolute', bottom: '32%', fontFamily: 'Nunito, sans-serif',
-      fontWeight: 800, fontSize: 24, letterSpacing: '-0.01em', color: accent,
-      textShadow: '0 1px 2px rgba(0,0,0,0.12)' }}>
-      {streak === 10 ? 'Zehn am Stück!' : 'Fünf am Stück!'}
+      willChange: 'transform' }}>
+      <img src="dandelion_many.png" alt="" decoding="async" width={160} height={160}
+        style={{ display: 'block',
+          filter: 'drop-shadow(0 6px 18px rgba(0,0,0,0.18))' }} />
     </div>
   </div>;
 }
@@ -1392,6 +1395,18 @@ function UhrzeitApp() {
 
   return (
     <div className="app-shell">
+      {/* Offscreen decoder: forces the browser to decode the PNGs into the
+          image cache at app start, so the feedback overlays don't stutter on
+          first mount waiting for decode. The <link rel=preload> tags in
+          <head> fetch bytes early but decode only happens when an <img>
+          actually references the src. */}
+      <div aria-hidden="true" style={{ position: 'absolute', width: 0, height: 0,
+        overflow: 'hidden', pointerEvents: 'none' }}>
+        <img src="dandelion_single.png" alt="" decoding="async" />
+        <img src="dandelion_gone.png" alt="" decoding="async" />
+        <img src="dandelion_many.png" alt="" decoding="async" />
+      </div>
+
       <div style={{ position: 'relative' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10,
           fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.2em',
@@ -1429,7 +1444,7 @@ function UhrzeitApp() {
 
         <DebugStrip c={c} game={game} />
       </div>
-      {celeb && <Celebrate streak={celeb} c={c} accent={accent} />}
+      {celeb && <Celebrate c={c} />}
     </div>
   );
 }
