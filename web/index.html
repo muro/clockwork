@@ -1352,6 +1352,12 @@ function DebugStrip({ c, game }) {
   </div>;
 }
 
+// Show the debug strip when the URL carries ?debug=1 or #debug. Kept out
+// of the shipped UX but still one URL-edit away for dev use.
+const isDebug = typeof window !== 'undefined' &&
+  (/(^|[?&])debug=1(&|$)/.test(window.location.search) ||
+   window.location.hash === '#debug');
+
 function UhrzeitApp() {
   const { mastery, record, reset } = useMastery();
   const { id: themeId, resolvedId: resolvedThemeId, setId: setThemeId, T } = useTheme();
@@ -1442,7 +1448,7 @@ function UhrzeitApp() {
           <Body S={S} actions={game.actions} level={level} c={c} theme={theme}
             accent={accent} font="Nunito, sans-serif" labelFont="JetBrains Mono" />}
 
-        <DebugStrip c={c} game={game} />
+        {isDebug && <DebugStrip c={c} game={game} />}
       </div>
       {celeb && <Celebrate c={c} />}
     </div>
