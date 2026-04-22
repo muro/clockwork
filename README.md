@@ -10,13 +10,13 @@ far. Two color themes (Koralle / Abend) with an Auto swatch that follows
 
 ## Run it
 
-Open `index.html` in any modern browser. That's the whole app.
+Open `web/index.html` in any modern browser. That's the whole app.
 
 If you want to serve it locally (recommended on iOS, where some browsers are
 picky about `file://`):
 
 ```sh
-python3 -m http.server 8765
+python3 -m http.server 8765 --directory web
 # then open http://localhost:8765/index.html
 ```
 
@@ -26,13 +26,17 @@ uses a two-step confirmation (first tap arms, second tap within 4 s commits).
 
 ## Files
 
+All runtime files live in `web/`; the repo root holds only meta files
+(`README.md`, `LICENSE`, `.claude/`).
+
 | File | What it is |
 | --- | --- |
-| `index.html` | The app. Loads React + Babel standalone from CDN and runs JSX inline. |
-| `engine.js` | Pure logic — `parseTime`, option builders, snap, mastery. No React, no DOM. Shared with `tests.html`. |
-| `preview.html` | Development preview. Renders `index.html` inside a phone-frame mockup via `<iframe>`. The frame is not part of the app. |
-| `tests.html` | 86 in-browser unit tests. Open directly or via the static server. |
-| `.claude/launch.json` | Claude Code preview server config (`python3 -m http.server 8765`). |
+| `web/index.html` | The app. Loads React + Babel standalone from CDN and runs JSX inline. |
+| `web/engine.js` | Pure logic — `parseTime`, option builders, snap, mastery. No React, no DOM. Shared with `tests.html`. |
+| `web/preview.html` | Development preview. Renders `index.html` inside a phone-frame mockup via `<iframe>`. The frame is not part of the app. |
+| `web/tests.html` | 86 in-browser unit tests. Open directly or via the static server. |
+| `web/dandelion_*.png` | Bloom artwork used for level mastery and feedback overlays. |
+| `.claude/launch.json` | Claude Code preview server config (serves from `web/` on :8765). |
 
 ## Exercises
 
@@ -82,10 +86,10 @@ headless CI check that greps `#summary`.
 
 ## Design notes
 
-- **One artifact to ship.** `index.html` + `engine.js` = the whole app. No
-  build step, no npm, no bundler. JSX runs through `@babel/standalone`.
-  Trade-off: first paint is a couple of seconds on slow connections while
-  Babel loads.
+- **One artifact to ship.** `web/index.html` + `web/engine.js` = the whole
+  app. No build step, no npm, no bundler. JSX runs through
+  `@babel/standalone`. Trade-off: first paint is a couple of seconds on slow
+  connections while Babel loads.
 - **Engine is framework-agnostic.** All pure logic lives in `engine.js`,
   attached to `window`. `index.html` and `tests.html` both depend on it.
   If the UI ever moves off React, the engine and its tests come along
