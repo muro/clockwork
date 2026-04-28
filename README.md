@@ -26,8 +26,8 @@ uses a two-step confirmation (first tap arms, second tap within 4 s commits).
 
 ## Files
 
-All runtime files live in `web/`; the repo root holds only meta files
-(`README.md`, `LICENSE`, `.claude/`).
+All runtime files live in `web/`. The repo root holds meta files
+(`README.md`, `LICENSE`, `.claude/`) and `tools/` for one-off generators.
 
 | File | What it is |
 | --- | --- |
@@ -36,7 +36,26 @@ All runtime files live in `web/`; the repo root holds only meta files
 | `web/preview.html` | Development preview. Renders `index.html` inside a phone-frame mockup via `<iframe>`. The frame is not part of the app. |
 | `web/tests.html` | 86 in-browser unit tests. Open directly or via the static server. |
 | `web/dandelion_*.png` | Bloom artwork used for level mastery and feedback overlays. |
+| `web/icon.png` | 512×512 app icon — clock face overlaid on `dandelion_single.png`, masked to the flower silhouette. Generated; see [Icon](#icon). |
+| `tools/build_icon.py` | Regenerates `web/icon.png`. See [Icon](#icon). |
 | `.claude/launch.json` | Claude Code preview server config (serves from `web/` on :8765). |
+
+## Icon
+
+`web/icon.png` is built, not hand-painted. To regenerate:
+
+```sh
+pip3 install Pillow
+python3 tools/build_icon.py
+```
+
+The script composites a koralle-themed clock face (semi-transparent enamel,
+ink-coloured numerals/ticks/hour-hand, accent-orange minute hand, the same
+Spitz pointer shape as `drawSpitz()` in `index.html`) over
+`web/dandelion_single.png`, then takes the dandelion's alpha channel as the
+final mask so the icon's silhouette is the flower's irregular petal edge.
+Knobs at the top of the file: `R` for clock size, `ENAMEL` alpha for face
+transparency, the colour constants for theme.
 
 ## Exercises
 
