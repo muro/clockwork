@@ -22,7 +22,8 @@ import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC  = os.path.join(ROOT, 'web', 'dandelion_single.png')
-OUT  = os.path.join(ROOT, 'web', 'icon.png')
+OUT  = os.path.join(ROOT, 'web', 'icon.png')           # 512×512 master
+OUT_192 = os.path.join(ROOT, 'web', 'icon-192.png')    # Android manifest secondary
 FONT = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
 
 # ── tunable knobs ────────────────────────────────────────────
@@ -125,6 +126,8 @@ combined = Image.alpha_composite(dandelion, clock_small)
 # Final alpha = dandelion alpha → clock is cropped to the flower silhouette.
 r, g, b, _ = combined.split()
 _, _, _, da = dandelion.split()
-Image.merge('RGBA', (r, g, b, da)).save(OUT, optimize=True)
+final = Image.merge('RGBA', (r, g, b, da))
+final.save(OUT, optimize=True)
+final.resize((192, 192), Image.LANCZOS).save(OUT_192, optimize=True)
 
-print(f'wrote {OUT}')
+print(f'wrote {OUT} + {OUT_192}')
