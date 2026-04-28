@@ -60,20 +60,39 @@ function pickMode(level, rand = Math.random) {
   return level.mode;
 }
 
-// modes:
-//   lesen         clock → choose digital
-//   stellen       digital → set clock
-//   wort-lesen    clock → choose phrase
-//   wort-stellen  phrase → set clock
-//   digital-wort  digital → choose phrase   (no clock)
-//   wort-digital  phrase → choose digital   (no clock)
+// MODE_SPECS is the single source of truth for what each mode shows on
+// either side. Mode names read as "<prompt-modality>-<answer-modality>"
+// (lesen/stellen are historical aliases for clock-↔-digital). Keeping the
+// pair canonical here means the renderer in index.html never has to
+// hand-map mode → prompt/answer, and a "same modality on both sides"
+// test (in tests.html) makes the bug class structurally unreachable.
 //
+// Modalities: 'clock' | 'digital' | 'word'.
+const MODE_SPECS = {
+  'lesen':        { prompt: 'clock',   answer: 'digital' },
+  'stellen':      { prompt: 'digital', answer: 'clock'   },
+  'wort-lesen':   { prompt: 'clock',   answer: 'word'    },
+  'wort-stellen': { prompt: 'word',    answer: 'clock'   },
+  'digital-wort': { prompt: 'digital', answer: 'word'    },
+  'wort-digital': { prompt: 'word',    answer: 'digital' },
+};
+const ALL_MODES = Object.keys(MODE_SPECS);
+
+// Look up the canonical (prompt, answer, derived flags) for a mode.
+// Returns null for unknown modes.
+function modeView(mode) {
+  const spec = MODE_SPECS[mode];
+  if (!spec) return null;
+  return {
+    promptKind: spec.prompt,
+    answerKind: spec.answer,
+    showClock:  spec.prompt === 'clock' || spec.answer === 'clock',
+    pickOption: spec.answer !== 'clock', // user taps an option vs sets the clock
+  };
+}
+
 // Review levels (review: true) carry `modes` + `minuteSets` arrays; a random
 // mode is picked per question and the minute is drawn from the union.
-const ALL_MODES = ['lesen', 'stellen', 'wort-lesen', 'wort-stellen', 'digital-wort', 'wort-digital'];
-
-// Modes whose prompt is text only — the renderer skips the clock face.
-const TEXT_ONLY_MODES = new Set(['digital-wort', 'wort-digital']);
 
 // Levels are ordered. The `key` is the stable storage id (mastery + current
 // level pointer in localStorage); changing curriculum order in the future
@@ -398,7 +417,7 @@ function resetMastery() {
 
 Object.assign(window, {
   HOUR_NAMES, hourName, parseTime, digitalStr, digitalFromQ, wordFromQ,
-  MINUTE_SETS, LEVELS, ALL_MODES, TEXT_ONLY_MODES, pickRandom, shuffle,
+  MINUTE_SETS, LEVELS, ALL_MODES, MODE_SPECS, modeView, pickRandom, shuffle,
   effectiveMinutes, pickMode,
   buildDigitalOptions, buildWordOptions,
   snap5deg, snapHour, snapToAllowedMinutes, minuteSnapGrid,

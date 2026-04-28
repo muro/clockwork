@@ -435,6 +435,44 @@ group('exercise: stellen / wort-stellen snap round-trip', () => {
 // TRANSITIONS BETWEEN EXERCISE TYPES
 // ─────────────────────────────────────────────────────────────
 group('transitions between exercises', () => {
+  test('every mode pairs distinct prompt and answer modalities (no level compares the same thing on both sides)', () => {
+    for (const [mode, spec] of Object.entries(MODE_SPECS)) {
+      ok(spec.prompt !== spec.answer,
+        `mode "${mode}" has the same modality on both sides (${spec.prompt} → ${spec.answer})`);
+    }
+  });
+  test('every modality is a known kind', () => {
+    const kinds = new Set(['clock', 'digital', 'word']);
+    for (const [mode, spec] of Object.entries(MODE_SPECS)) {
+      ok(kinds.has(spec.prompt), `mode "${mode}" prompt=${spec.prompt} unknown`);
+      ok(kinds.has(spec.answer), `mode "${mode}" answer=${spec.answer} unknown`);
+    }
+  });
+  test('ALL_MODES is exactly the keys of MODE_SPECS', () => {
+    eq(ALL_MODES.length, Object.keys(MODE_SPECS).length);
+    for (const m of ALL_MODES) ok(MODE_SPECS[m], `${m} in ALL_MODES but missing from MODE_SPECS`);
+  });
+  test('every mode used in LEVELS has a MODE_SPECS entry', () => {
+    const used = new Set();
+    for (const l of LEVELS) {
+      if (l.mode) used.add(l.mode);
+      if (l.modes) for (const m of l.modes) used.add(m);
+    }
+    for (const m of used) ok(MODE_SPECS[m], `mode "${m}" used in LEVELS but missing from MODE_SPECS`);
+  });
+  test('modeView returns null for unknown modes and a stable shape for known ones', () => {
+    eq(modeView('does-not-exist'), null);
+    for (const m of ALL_MODES) {
+      const v = modeView(m);
+      ok(v, `modeView(${m}) returned null`);
+      ok(typeof v.promptKind === 'string' && typeof v.answerKind === 'string',
+        `modeView(${m}) missing promptKind/answerKind`);
+      eq(v.showClock, v.promptKind === 'clock' || v.answerKind === 'clock',
+        `modeView(${m}).showClock inconsistent with kinds`);
+      eq(v.pickOption, v.answerKind !== 'clock',
+        `modeView(${m}).pickOption inconsistent with answerKind`);
+    }
+  });
   test('LEVELS covers all six modes across learning and review levels', () => {
     const modes = new Set();
     for (const l of LEVELS) {

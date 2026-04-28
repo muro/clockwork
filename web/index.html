@@ -338,24 +338,28 @@ function useClockGame({ levelId = 0, roundN = 10, onMilestone, onRoundDone } = {
   // Review levels pick a mode per draw, so these predicates must key off the
   // *current question*, not the level. Plain levels pre-stamp q.mode anyway.
   const qMode = () => S.question?.mode || level.mode;
-  // Whose answer is a German phrase (vs a digital time).
-  const isWord = () => { const m = qMode(); return m === "wort-lesen" || m === "wort-stellen" || m === "digital-wort"; };
+  // Whether either side of the current question involves words (used to
+  // suppress the "· 24h" annotation on word-prompt levels and to choose the
+  // "Richtig: …" feedback format).
+  const isWord = () => {
+    const v = modeView(qMode());
+    return !!(v && (v.promptKind === 'word' || v.answerKind === 'word'));
+  };
   // Modes where the user manipulates the clock hands (vs picks an option).
-  const isSet  = () => { const m = qMode(); return m === "stellen"    || m === "wort-stellen"; };
+  const isSet  = () => modeView(qMode())?.answerKind === 'clock';
 
   const newQuestion = () => {
     clearTimeout(S.autoSubmitTimer); S.autoSubmitTimer = null;
     S.question = makeQuestion(level);
     S.selected = null; S.locked = false;
     S.feedback = null; S.feedbackKind = null;
-    const mode = S.question.mode;
-    if (mode === "stellen" || mode === "wort-stellen") {
+    const view = modeView(S.question.mode);
+    if (view?.answerKind === 'clock') {
       S.setH = 12; S.setM = 0; S.activeHand = "minute";
     }
-    // Option-pickers: lesen and wort-digital answer with a digital time;
-    // wort-lesen and digital-wort answer with a phrase.
-    if (mode === "lesen" || mode === "wort-digital") Object.assign(S, buildDigitalOptions(S.question, level));
-    if (mode === "wort-lesen" || mode === "digital-wort") Object.assign(S, buildWordOptions(S.question, level));
+    // Option-pickers: the option builder matches the answer modality.
+    if (view?.answerKind === 'digital') Object.assign(S, buildDigitalOptions(S.question, level));
+    if (view?.answerKind === 'word')    Object.assign(S, buildWordOptions(S.question, level));
     refresh();
   };
 
@@ -413,9 +417,7 @@ function useClockGame({ levelId = 0, roundN = 10, onMilestone, onRoundDone } = {
     if (S.locked) return;
     S.selected = val;
     refresh();
-    // Answer is a phrase whenever the answer-side is words.
-    const m = qMode();
-    const correct = (m === "wort-lesen" || m === "digital-wort")
+    const correct = modeView(qMode())?.answerKind === 'word'
       ? wordFromQ(S.question) : digitalFromQ(S.question);
     finishQuestion(val === correct);
   };
@@ -1053,26 +1055,27 @@ function Body({ S, actions, level, c, theme, font, labelFont, accent }) {
   // question, not the level. Plain levels stamp the level's mode on the
   // question, so the same lookup works for both.
   const mode = S.question.mode || level.mode;
-  const isRead = mode === 'lesen' || mode === 'wort-lesen';
-  const isWord = mode === 'wort-lesen' || mode === 'wort-stellen' || mode === 'digital-wort';
-  const noClock = TEXT_ONLY_MODES.has(mode);
-  // Modes whose prompt itself is a big digital or word string (rather than
-  // a clock face). digital-wort = digital prompt → word answer;
-  // wort-digital = word prompt → digital answer. The mode name reads
-  // "<prompt>-<answer>".
-  const showDigitalPrompt = mode === 'stellen' || mode === 'digital-wort';
-  const showWordPrompt    = mode === 'wort-stellen' || mode === 'wort-digital';
+  const view = modeView(mode);
+  // The clock face is shown when *either* side of the mode involves the
+  // clock (as prompt for lesen/wort-lesen, or as answer for stellen/
+  // wort-stellen). The two no-clock modes drop it entirely.
+  const isRead = view.promptKind === 'clock' && view.answerKind !== 'clock';
+  const isWord = view.promptKind === 'word' || view.answerKind === 'word';
+  const noClock = !view.showClock;
+  const showDigitalPrompt = view.promptKind === 'digital';
+  const showWordPrompt    = view.promptKind === 'word';
 
   // Prompt slot — fixed min-height so the clock sits at the same Y in every
   // mode. Content is flex-end-aligned: modes with only a small label leave
   // space above empty; modes with a big digital/word prompt fill it.
   const promptMinHeight = 92;
+  // Label describes what the user is being asked to produce. Derived from
+  // the mode's answer modality so a future renamed/added mode picks up the
+  // right label automatically.
   const labelText =
-    mode === 'lesen'         ? `Wie spät ist es?${level.hour24 ? ' · 24h' : ''}` :
-    mode === 'wort-lesen'    ? 'Welcher Satz passt?' :
-    mode === 'digital-wort'  ? 'Welcher Satz passt?' :
-    mode === 'wort-digital'  ? 'Wie spät ist es?' :
-    `Stelle die Uhr auf${!isWord && level.hour24 ? ' · 24h' : ''}`;
+    view.answerKind === 'clock'   ? `Stelle die Uhr auf${!isWord && level.hour24 ? ' · 24h' : ''}` :
+    view.answerKind === 'digital' ? `Wie spät ist es?${level.hour24 ? ' · 24h' : ''}` :
+    /* answerKind === 'word' */     'Welcher Satz passt?';
 
   const prompt = (
     <div style={{
@@ -1147,13 +1150,11 @@ function Body({ S, actions, level, c, theme, font, labelFont, accent }) {
     </div>
   );
 
-  // Option-picker modes: the answer side is either a digital time or a phrase.
-  // lesen          clock prompt → digital options (2-col pill grid)
-  // wort-lesen     clock prompt → phrase options (1-col rows)
-  // wort-digital   phrase prompt → digital options (2-col pill grid, no clock)
-  // digital-wort   digital prompt → phrase options (1-col rows, no clock)
-  const wordOptions = mode === 'wort-lesen' || mode === 'digital-wort';
-  const showOptions = wordOptions || mode === 'lesen' || mode === 'wort-digital';
+  // Option-picker modes: the answer side is either a digital time or a
+  // phrase. Layout follows the answer modality — phrase options sit in a
+  // single-column row stack; digital options in a 2-col pill grid.
+  const wordOptions = view.answerKind === 'word';
+  const showOptions = view.pickOption;
 
   if (showOptions) {
     const correct = wordOptions ? wordFromQ(S.question) : digitalFromQ(S.question);

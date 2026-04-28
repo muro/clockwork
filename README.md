@@ -34,7 +34,7 @@ All runtime files live in `web/`. The repo root holds meta files
 | `web/index.html` | The app. Loads React + Babel standalone from CDN and runs JSX inline. |
 | `web/engine.js` | Pure logic — `parseTime`, option builders, snap, mastery. No React, no DOM. Shared with `tests.html`. |
 | `web/preview.html` | Development preview. Renders `index.html` inside a phone-frame mockup via `<iframe>`. The frame is not part of the app. |
-| `web/tests.html` | 89 in-browser unit tests. Open directly or via the static server. |
+| `web/tests.html` | 94 in-browser unit tests. Open directly or via the static server. |
 | `web/dandelion_*.png` | Bloom artwork used for level mastery and feedback overlays. |
 | `web/icon.png` | 512×512 app icon — clock face overlaid on `dandelion_single.png`, masked to the flower silhouette. Generated; see [Icon](#icon). |
 | `web/icon-192.png` | 192×192 derivative of `icon.png` for the Android manifest. Generated. |
