@@ -60,34 +60,84 @@ function pickMode(level, rand = Math.random) {
   return level.mode;
 }
 
-// modes: lesen (clock→digital), stellen (digital→clock),
-//        wort-lesen (clock→phrase), wort-stellen (phrase→clock)
+// MODE_SPECS is the single source of truth for what each mode shows on
+// either side. Mode names read as "<prompt-modality>-<answer-modality>"
+// (lesen/stellen are historical aliases for clock-↔-digital). Keeping the
+// pair canonical here means the renderer in index.html never has to
+// hand-map mode → prompt/answer, and a "same modality on both sides"
+// test (in tests.html) makes the bug class structurally unreachable.
+//
+// Modalities: 'clock' | 'digital' | 'word'.
+const MODE_SPECS = {
+  'lesen':        { prompt: 'clock',   answer: 'digital' },
+  'stellen':      { prompt: 'digital', answer: 'clock'   },
+  'wort-lesen':   { prompt: 'clock',   answer: 'word'    },
+  'wort-stellen': { prompt: 'word',    answer: 'clock'   },
+  'digital-wort': { prompt: 'digital', answer: 'word'    },
+  'wort-digital': { prompt: 'word',    answer: 'digital' },
+};
+const ALL_MODES = Object.keys(MODE_SPECS);
+
+// Look up the canonical (prompt, answer, derived flags) for a mode.
+// Returns null for unknown modes.
+function modeView(mode) {
+  const spec = MODE_SPECS[mode];
+  if (!spec) return null;
+  return {
+    promptKind: spec.prompt,
+    answerKind: spec.answer,
+    showClock:  spec.prompt === 'clock' || spec.answer === 'clock',
+    pickOption: spec.answer !== 'clock', // user taps an option vs sets the clock
+  };
+}
+
 // Review levels (review: true) carry `modes` + `minuteSets` arrays; a random
 // mode is picked per question and the minute is drawn from the union.
-const ALL_MODES = ['lesen', 'stellen', 'wort-lesen', 'wort-stellen'];
+
+// Levels are ordered. The `key` is the stable storage id (mastery + current
+// level pointer in localStorage); changing curriculum order in the future
+// will not require another migration as long as the keys themselves don't
+// change. digital↔word levels are not introduced for full hours (3:00 ↔
+// "drei Uhr" is too obvious) and not for 24h (German clock-words don't
+// distinguish AM/PM, so the answer would be ambiguous).
 const LEVELS = [
-  { id: 0,  mode: "lesen",        minuteSet: "volle",   hour24: false, title: "Volle Stunden",      sub: "Uhr ablesen · :00" },
-  { id: 1,  mode: "stellen",      minuteSet: "volle",   hour24: false, title: "Volle stellen",      sub: "Uhr stellen · :00" },
-  { id: 2,  mode: "lesen",        minuteSet: "halbe",   hour24: false, title: "Halbe Stunden",      sub: "Uhr ablesen · :30" },
-  { id: 3,  mode: "wort-lesen",   minuteSet: "halbe",   hour24: false, title: "halb … auf Deutsch", sub: "Welcher Satz passt?" },
-  { id: 4,  mode: "wort-stellen", minuteSet: "halbe",   hour24: false, title: "halb … stellen",    sub: "Satz zur Uhr" },
-  { id: 5,  mode: "stellen",      minuteSet: "halbe",   hour24: false, title: "Halbe stellen",      sub: "Uhr stellen · :30" },
-  { id: 6,  mode: "lesen",        minuteSet: "viertel", hour24: false, title: "Viertelstunden",     sub: "Uhr ablesen · :15, :45" },
-  { id: 7,  mode: "wort-lesen",   minuteSet: "viertel", hour24: false, title: "Viertel · Wörter",   sub: "Welcher Satz passt?" },
-  { id: 8,  mode: "wort-stellen", minuteSet: "viertel", hour24: false, title: "Viertel · stellen",  sub: "Satz zur Uhr" },
-  { id: 9,  mode: "stellen",      minuteSet: "viertel", hour24: false, title: "Viertel stellen",    sub: "Uhr stellen · :15, :45" },
-  { id: 10, review: true, modes: ALL_MODES, minuteSets: ["volle", "halbe", "viertel"],
+  // Tier blocks all follow the same shape:
+  //   lesen → wort-lesen → wort-stellen → stellen   (clock-using pair-of-pairs)
+  //   digital-wort → wort-digital                   (no-clock translation drills)
+  //   review                                         (covers everything so far)
+  // Keeping wort-stellen and stellen adjacent matters: they're a pair that
+  // varies only in the prompt's modality. The translation drills are a
+  // distinct skill — they sit at the end of the block.
+  { key: "lesen-volle",          mode: "lesen",        minuteSet: "volle",   hour24: false, title: "Volle Stunden",      sub: "Uhr ablesen · :00" },
+  { key: "stellen-volle",        mode: "stellen",      minuteSet: "volle",   hour24: false, title: "Volle stellen",      sub: "Uhr stellen · :00" },
+  { key: "lesen-halbe",          mode: "lesen",        minuteSet: "halbe",   hour24: false, title: "Halbe Stunden",      sub: "Uhr ablesen · :30" },
+  { key: "wort-lesen-halbe",     mode: "wort-lesen",   minuteSet: "halbe",   hour24: false, title: "halb … auf Deutsch", sub: "Welcher Satz passt?" },
+  { key: "wort-stellen-halbe",   mode: "wort-stellen", minuteSet: "halbe",   hour24: false, title: "halb … stellen",     sub: "Satz zur Uhr" },
+  { key: "stellen-halbe",        mode: "stellen",      minuteSet: "halbe",   hour24: false, title: "Halbe stellen",      sub: "Uhr stellen · :30" },
+  { key: "wort-digital-halbe",   mode: "wort-digital", minuteSet: "halbe",   hour24: false, title: "halbe · Zeit finden", sub: 'Wie spät ist „halb vier"?' },
+  { key: "digital-wort-halbe",   mode: "digital-wort", minuteSet: "halbe",   hour24: false, title: "halbe · Wort finden", sub: "Wie heißt 3:30?" },
+  { key: "review-after-halbe",   review: true, modes: ALL_MODES, minuteSets: ["volle", "halbe"],
+    hour24: false, title: "Wiederholung · bis halbe", sub: "Alles Gelernte gemischt" },
+  { key: "lesen-viertel",        mode: "lesen",        minuteSet: "viertel", hour24: false, title: "Viertelstunden",     sub: "Uhr ablesen · :15, :45" },
+  { key: "wort-lesen-viertel",   mode: "wort-lesen",   minuteSet: "viertel", hour24: false, title: "Viertel · Wörter",   sub: "Welcher Satz passt?" },
+  { key: "wort-stellen-viertel", mode: "wort-stellen", minuteSet: "viertel", hour24: false, title: "Viertel · stellen",  sub: "Satz zur Uhr" },
+  { key: "stellen-viertel",      mode: "stellen",      minuteSet: "viertel", hour24: false, title: "Viertel stellen",    sub: "Uhr stellen · :15, :45" },
+  { key: "wort-digital-viertel", mode: "wort-digital", minuteSet: "viertel", hour24: false, title: "Viertel · Zeit finden", sub: 'Wie spät ist „Viertel vor sieben"?' },
+  { key: "digital-wort-viertel", mode: "digital-wort", minuteSet: "viertel", hour24: false, title: "Viertel · Wort finden", sub: "Wie heißt 6:45?" },
+  { key: "review-after-viertel", review: true, modes: ALL_MODES, minuteSets: ["volle", "halbe", "viertel"],
     hour24: false, title: "Wiederholung · bis Viertel", sub: "Alles Gelernte gemischt" },
-  { id: 11, mode: "lesen",        minuteSet: "fuenf",   hour24: false, title: "5-Minuten",          sub: "Uhr ablesen · alle 5" },
-  { id: 12, mode: "wort-lesen",   minuteSet: "fuenf",   hour24: false, title: "5-Min. · Wörter",    sub: "Welcher Satz passt?" },
-  { id: 13, mode: "wort-stellen", minuteSet: "fuenf",   hour24: false, title: "5-Min. · stellen",   sub: "Satz zur Uhr" },
-  { id: 14, mode: "stellen",      minuteSet: "fuenf",   hour24: false, title: "5-Min. stellen",     sub: "Uhr stellen · alle 5" },
-  { id: 15, review: true, modes: ALL_MODES, minuteSets: ["volle", "halbe", "viertel", "fuenf"],
+  { key: "lesen-fuenf",          mode: "lesen",        minuteSet: "fuenf",   hour24: false, title: "5-Minuten",          sub: "Uhr ablesen · alle 5" },
+  { key: "wort-lesen-fuenf",     mode: "wort-lesen",   minuteSet: "fuenf",   hour24: false, title: "5-Min. · Wörter",    sub: "Welcher Satz passt?" },
+  { key: "wort-stellen-fuenf",   mode: "wort-stellen", minuteSet: "fuenf",   hour24: false, title: "5-Min. · stellen",   sub: "Satz zur Uhr" },
+  { key: "stellen-fuenf",        mode: "stellen",      minuteSet: "fuenf",   hour24: false, title: "5-Min. stellen",     sub: "Uhr stellen · alle 5" },
+  { key: "wort-digital-fuenf",   mode: "wort-digital", minuteSet: "fuenf",   hour24: false, title: "5-Min. · Zeit finden", sub: 'Wie spät ist „fünf vor halb fünf"?' },
+  { key: "digital-wort-fuenf",   mode: "digital-wort", minuteSet: "fuenf",   hour24: false, title: "5-Min. · Wort finden", sub: "Wie heißt 4:25?" },
+  { key: "review-after-fuenf",   review: true, modes: ALL_MODES, minuteSets: ["volle", "halbe", "viertel", "fuenf"],
     hour24: false, title: "Wiederholung · bis 5-Min.", sub: "Alles Gelernte gemischt" },
-  { id: 16, mode: "lesen",        minuteSet: "fuenf",   hour24: true,  title: "24 Stunden",         sub: "Uhr ablesen · 24h" },
-  { id: 17, mode: "stellen",      minuteSet: "fuenf",   hour24: true,  title: "24h stellen",        sub: "Uhr stellen · 24h" },
-  { id: 18, mode: "lesen",        minuteSet: "minute",  hour24: false, title: "Minutengenau",       sub: "Uhr ablesen · jede Minute" },
-  { id: 19, mode: "stellen",      minuteSet: "minute",  hour24: false, title: "Minutengenau stellen", sub: "Uhr stellen · jede Minute" },
+  { key: "lesen-fuenf-24h",      mode: "lesen",        minuteSet: "fuenf",   hour24: true,  title: "24 Stunden",         sub: "Uhr ablesen · 24h" },
+  { key: "stellen-fuenf-24h",    mode: "stellen",      minuteSet: "fuenf",   hour24: true,  title: "24h stellen",        sub: "Uhr stellen · 24h" },
+  { key: "lesen-minute",         mode: "lesen",        minuteSet: "minute",  hour24: false, title: "Minutengenau",       sub: "Uhr ablesen · jede Minute" },
+  { key: "stellen-minute",       mode: "stellen",      minuteSet: "minute",  hour24: false, title: "Minutengenau stellen", sub: "Uhr stellen · jede Minute" },
 ];
 
 function pickRandom(a){ return a[Math.floor(Math.random()*a.length)]; }
@@ -239,46 +289,114 @@ function makeQuestion(level, rand = Math.random) {
     // only PM here keeps every question in the "new" half-day.
     dh = h === 12 ? 12 : h + 12;
   }
-  const mode = pickMode(level, rand);
+  let mode = pickMode(level, rand);
+  // Reviews mix all modes × all minute pools. The digital↔word direction on
+  // the full hour ("3:00 ↔ drei Uhr") is too obvious — re-roll the mode in
+  // that combo. Cap the retries so a review whose modes are *only* digital↔word
+  // can't loop forever; the trivial mode is still a legal fallback.
+  if (level.review && m === 0) {
+    for (let i = 0; i < 8 && (mode === 'digital-wort' || mode === 'wort-digital'); i++) {
+      mode = pickMode(level, rand);
+    }
+  }
   return { h, m, dh, mode, parsed: parseTime(h, m) };
 }
 
 // ============================================================
 // MASTERY / localStorage (framework-agnostic)
 // ============================================================
-const MASTERY_KEY = "uhrzeit.mastery.v2";
+const MASTERY_KEY    = "uhrzeit.mastery.v3";
+const MASTERY_KEY_V2 = "uhrzeit.mastery.v2";
 const MASTERY_KEY_V1 = "uhrzeit.mastery.v1";
-const LEVEL_KEY   = "uhrzeit.level";
+const LEVEL_KEY      = "uhrzeit.level";
 
-// v2 inserted two review levels into the curriculum:
-//   - id 10  (between viertel/stellen and the fuenf block)
-//   - id 15  (between fuenf/stellen and the 24h block)
-// Shift legacy level ids accordingly.
+// v1 → v2: review levels were inserted into the curriculum at numeric ids
+// 10 (between viertel/stellen and the fuenf block) and 15 (between
+// fuenf/stellen and 24h). Shift legacy ids accordingly.
 function migrateV1Id(oldId) {
   const i = parseInt(oldId, 10);
   if (!Number.isInteger(i)) return null;
-  if (i < 10) return i;         // volle / halbe / viertel — unchanged
-  if (i < 14) return i + 1;     // old fuenf 10..13 → 11..14
-  if (i < 18) return i + 2;     // old 24h + minute 14..17 → 16..19
-  return null;                  // out of range — discard
+  if (i < 10) return i;
+  if (i < 14) return i + 1;
+  if (i < 18) return i + 2;
+  return null;
+}
+
+// v2 → v3: numeric ids became stable string keys, and several digital↔word
+// levels plus a third review were inserted. This frozen table maps every v2
+// id (0..19) to its v3 key, so future curriculum reorderings need no
+// further migration as long as the keys themselves don't change.
+const V2_TO_V3 = {
+  0:  "lesen-volle",
+  1:  "stellen-volle",
+  2:  "lesen-halbe",
+  3:  "wort-lesen-halbe",
+  4:  "wort-stellen-halbe",
+  5:  "stellen-halbe",
+  6:  "lesen-viertel",
+  7:  "wort-lesen-viertel",
+  8:  "wort-stellen-viertel",
+  9:  "stellen-viertel",
+  10: "review-after-viertel",
+  11: "lesen-fuenf",
+  12: "wort-lesen-fuenf",
+  13: "wort-stellen-fuenf",
+  14: "stellen-fuenf",
+  15: "review-after-fuenf",
+  16: "lesen-fuenf-24h",
+  17: "stellen-fuenf-24h",
+  18: "lesen-minute",
+  19: "stellen-minute",
+};
+
+function migrateV2ToV3(v2Mastery) {
+  const out = {};
+  for (const [k, v] of Object.entries(v2Mastery || {})) {
+    const newKey = V2_TO_V3[String(k)];
+    if (newKey) out[newKey] = v;
+  }
+  return out;
+}
+
+// Storage value for LEVEL_KEY used to be a numeric index ("0".."19"); it
+// now stores the level's stable key. Translate any leftover numeric value
+// at read time.
+function levelKeyFromStored(stored) {
+  if (!stored) return null;
+  if (/^\d+$/.test(stored)) return V2_TO_V3[stored] || null;
+  return LEVELS.some(L => L.key === stored) ? stored : null;
 }
 
 function loadMastery() {
   try {
-    const raw = localStorage.getItem(MASTERY_KEY);
-    if (raw) return JSON.parse(raw);
-    // No v2 yet — try to migrate from v1 so returning users keep progress.
-    const v1 = localStorage.getItem(MASTERY_KEY_V1);
-    if (!v1) return {};
-    const old = JSON.parse(v1);
-    const migrated = {};
-    for (const [key, val] of Object.entries(old)) {
-      const newId = migrateV1Id(key);
-      if (newId !== null) migrated[newId] = val;
+    const v3 = localStorage.getItem(MASTERY_KEY);
+    if (v3) return JSON.parse(v3);
+
+    // No v3 yet — chain through any earlier formats so returning users
+    // keep their progress.
+    const v2Raw = localStorage.getItem(MASTERY_KEY_V2);
+    if (v2Raw) {
+      const migrated = migrateV2ToV3(JSON.parse(v2Raw));
+      localStorage.setItem(MASTERY_KEY, JSON.stringify(migrated));
+      localStorage.removeItem(MASTERY_KEY_V2);
+      return migrated;
     }
-    localStorage.setItem(MASTERY_KEY, JSON.stringify(migrated));
-    localStorage.removeItem(MASTERY_KEY_V1);
-    return migrated;
+
+    const v1Raw = localStorage.getItem(MASTERY_KEY_V1);
+    if (v1Raw) {
+      const v1Data = JSON.parse(v1Raw);
+      const v2Data = {};
+      for (const [k, v] of Object.entries(v1Data)) {
+        const newId = migrateV1Id(k);
+        if (newId !== null) v2Data[newId] = v;
+      }
+      const migrated = migrateV2ToV3(v2Data);
+      localStorage.setItem(MASTERY_KEY, JSON.stringify(migrated));
+      localStorage.removeItem(MASTERY_KEY_V1);
+      return migrated;
+    }
+
+    return {};
   } catch { return {}; }
 }
 function saveMastery(m) { try { localStorage.setItem(MASTERY_KEY, JSON.stringify(m)); } catch {} }
@@ -288,12 +406,12 @@ function masteryTier(correct) {
   if (correct >= 8)  return 1;
   return 0;
 }
-function recordMastery(prev, levelId, correct) {
+function recordMastery(prev, levelKey, correct) {
   const tier = masteryTier(correct);
-  const prevBest = prev[levelId]?.tier ?? 0;
-  return { ...prev, [levelId]: {
+  const prevBest = prev[levelKey]?.tier ?? 0;
+  return { ...prev, [levelKey]: {
     tier: Math.max(prevBest, tier),
-    best: Math.max(prev[levelId]?.best ?? 0, correct),
+    best: Math.max(prev[levelKey]?.best ?? 0, correct),
     last: correct,
   }};
 }
@@ -306,12 +424,13 @@ function resetMastery() {
 
 Object.assign(window, {
   HOUR_NAMES, hourName, parseTime, digitalStr, digitalFromQ, wordFromQ,
-  MINUTE_SETS, LEVELS, ALL_MODES, pickRandom, shuffle,
+  MINUTE_SETS, LEVELS, ALL_MODES, MODE_SPECS, modeView, pickRandom, shuffle,
   effectiveMinutes, pickMode,
   buildDigitalOptions, buildWordOptions,
   snap5deg, snapHour, snapToAllowedMinutes, minuteSnapGrid,
   QUARTER_GRID, FUENF_GRID,
   makeQuestion,
-  MASTERY_KEY, MASTERY_KEY_V1, LEVEL_KEY, migrateV1Id,
+  MASTERY_KEY, MASTERY_KEY_V1, MASTERY_KEY_V2, LEVEL_KEY,
+  migrateV1Id, migrateV2ToV3, V2_TO_V3, levelKeyFromStored,
   loadMastery, saveMastery, masteryTier, recordMastery, resetMastery,
 });

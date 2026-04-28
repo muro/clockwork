@@ -302,9 +302,12 @@ function ThemePicker({ id, resolvedId, setId, T }) {
 // ============================================================
 function useMastery() {
   const [m, setM] = React.useState(() => loadMastery());
+  // Mastery is keyed by the level's stable string key (see engine.js
+  // V2_TO_V3 and the §Storage section in README), but the rest of the app
+  // navigates by numeric levelId. Translate at the boundary.
   const record = (levelId, correct) => {
     setM(prev => {
-      const next = recordMastery(prev, levelId, correct);
+      const next = recordMastery(prev, LEVELS[levelId].key, correct);
       saveMastery(next);
       return next;
     });
@@ -335,20 +338,28 @@ function useClockGame({ levelId = 0, roundN = 10, onMilestone, onRoundDone } = {
   // Review levels pick a mode per draw, so these predicates must key off the
   // *current question*, not the level. Plain levels pre-stamp q.mode anyway.
   const qMode = () => S.question?.mode || level.mode;
-  const isWord = () => { const m = qMode(); return m === "wort-lesen" || m === "wort-stellen"; };
-  const isSet  = () => { const m = qMode(); return m === "stellen"    || m === "wort-stellen"; };
+  // Whether either side of the current question involves words (used to
+  // suppress the "· 24h" annotation on word-prompt levels and to choose the
+  // "Richtig: …" feedback format).
+  const isWord = () => {
+    const v = modeView(qMode());
+    return !!(v && (v.promptKind === 'word' || v.answerKind === 'word'));
+  };
+  // Modes where the user manipulates the clock hands (vs picks an option).
+  const isSet  = () => modeView(qMode())?.answerKind === 'clock';
 
   const newQuestion = () => {
     clearTimeout(S.autoSubmitTimer); S.autoSubmitTimer = null;
     S.question = makeQuestion(level);
     S.selected = null; S.locked = false;
     S.feedback = null; S.feedbackKind = null;
-    const mode = S.question.mode;
-    if (mode === "stellen" || mode === "wort-stellen") {
+    const view = modeView(S.question.mode);
+    if (view?.answerKind === 'clock') {
       S.setH = 12; S.setM = 0; S.activeHand = "minute";
     }
-    if (mode === "lesen")      Object.assign(S, buildDigitalOptions(S.question, level));
-    if (mode === "wort-lesen") Object.assign(S, buildWordOptions(S.question, level));
+    // Option-pickers: the option builder matches the answer modality.
+    if (view?.answerKind === 'digital') Object.assign(S, buildDigitalOptions(S.question, level));
+    if (view?.answerKind === 'word')    Object.assign(S, buildWordOptions(S.question, level));
     refresh();
   };
 
@@ -406,7 +417,8 @@ function useClockGame({ levelId = 0, roundN = 10, onMilestone, onRoundDone } = {
     if (S.locked) return;
     S.selected = val;
     refresh();
-    const correct = qMode() === "wort-lesen" ? wordFromQ(S.question) : digitalFromQ(S.question);
+    const correct = modeView(qMode())?.answerKind === 'word'
+      ? wordFromQ(S.question) : digitalFromQ(S.question);
     finishQuestion(val === correct);
   };
 
@@ -904,7 +916,7 @@ function LevelTrack({ levelId, setLevelId, mastery, accent, ink, soft, trackBg, 
   ));
 
   const current = LEVELS[levelId];
-  const curMastery = mastery[levelId];
+  const curMastery = mastery[current.key];
 
   return (
     <div style={{ margin: '4px 0 14px' }}>
@@ -934,10 +946,11 @@ function LevelTrack({ levelId, setLevelId, mastery, accent, ink, soft, trackBg, 
         )}
         {width > 0 && LEVELS.map((lv, i) => {
           const { x, y } = posOf(i);
-          const tier = mastery[i]?.tier ?? 0;
+          const rec = mastery[lv.key];
+          const tier = rec?.tier ?? 0;
           const active = i === levelId;
           return (
-            <div key={i}
+            <div key={lv.key}
               onClick={(e) => { e.stopPropagation(); setLevelId(i); }}
               style={{ position: 'absolute', left: x, top: y,
                 transform: 'translate(-50%, -50%)',
@@ -945,7 +958,7 @@ function LevelTrack({ levelId, setLevelId, mastery, accent, ink, soft, trackBg, 
               }}>
               <LevelIcon tier={tier} active={active} accent={accent} ink={ink} paper={paper}
                 review={!!lv.review}
-                fillProgress={(mastery[i]?.best ?? 0) / 7} />
+                fillProgress={(rec?.best ?? 0) / 7} />
             </div>
           );
         })}
@@ -1042,17 +1055,27 @@ function Body({ S, actions, level, c, theme, font, labelFont, accent }) {
   // question, not the level. Plain levels stamp the level's mode on the
   // question, so the same lookup works for both.
   const mode = S.question.mode || level.mode;
-  const isRead = mode === 'lesen' || mode === 'wort-lesen';
-  const isWord = mode === 'wort-lesen' || mode === 'wort-stellen';
+  const view = modeView(mode);
+  // The clock face is shown when *either* side of the mode involves the
+  // clock (as prompt for lesen/wort-lesen, or as answer for stellen/
+  // wort-stellen). The two no-clock modes drop it entirely.
+  const isRead = view.promptKind === 'clock' && view.answerKind !== 'clock';
+  const isWord = view.promptKind === 'word' || view.answerKind === 'word';
+  const noClock = !view.showClock;
+  const showDigitalPrompt = view.promptKind === 'digital';
+  const showWordPrompt    = view.promptKind === 'word';
 
   // Prompt slot — fixed min-height so the clock sits at the same Y in every
   // mode. Content is flex-end-aligned: modes with only a small label leave
   // space above empty; modes with a big digital/word prompt fill it.
   const promptMinHeight = 92;
+  // Label describes what the user is being asked to produce. Derived from
+  // the mode's answer modality so a future renamed/added mode picks up the
+  // right label automatically.
   const labelText =
-    mode === 'lesen'      ? `Wie spät ist es?${level.hour24 ? ' · 24h' : ''}` :
-    mode === 'wort-lesen' ? 'Welcher Satz passt?' :
-    `Stelle die Uhr auf${!isWord && level.hour24 ? ' · 24h' : ''}`;
+    view.answerKind === 'clock'   ? `Stelle die Uhr auf${!isWord && level.hour24 ? ' · 24h' : ''}` :
+    view.answerKind === 'digital' ? `Wie spät ist es?${level.hour24 ? ' · 24h' : ''}` :
+    /* answerKind === 'word' */     'Welcher Satz passt?';
 
   const prompt = (
     <div style={{
@@ -1064,13 +1087,13 @@ function Body({ S, actions, level, c, theme, font, labelFont, accent }) {
         letterSpacing: '0.22em', textTransform: 'uppercase', color: c.soft }}>
         {labelText}
       </div>
-      {mode === 'stellen' && (
+      {showDigitalPrompt && (
         <div style={{ fontFamily: font, fontWeight: 600, fontSize: 64,
           color: accent, letterSpacing: '-0.03em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
           {digitalFromQ(S.question)}
         </div>
       )}
-      {mode === 'wort-stellen' && (
+      {showWordPrompt && (
         <div style={{ fontFamily: font, fontWeight: 600, fontSize: 28,
           color: accent, letterSpacing: '-0.015em', lineHeight: 1.15, padding: '0 6px' }}>
           {wordFromQ(S.question)}
@@ -1127,35 +1150,29 @@ function Body({ S, actions, level, c, theme, font, labelFont, accent }) {
     </div>
   );
 
-  if (mode === 'lesen') {
-    const correct = digitalFromQ(S.question);
+  // Option-picker modes: the answer side is either a digital time or a
+  // phrase. Layout follows the answer modality — phrase options sit in a
+  // single-column row stack; digital options in a 2-col pill grid.
+  const wordOptions = view.answerKind === 'word';
+  const showOptions = view.pickOption;
+
+  if (showOptions) {
+    const correct = wordOptions ? wordFromQ(S.question) : digitalFromQ(S.question);
     const stOf = (v) => !S.locked ? (S.selected === v ? 'selected' : '')
                         : v === correct ? 'correct' : v === S.selected ? 'wrong' : 'faded';
     return (
       <>
         {prompt}
-        {clockBlock}
-        <div data-testid="options" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        {!noClock && clockBlock}
+        <div data-testid="options" style={{
+          display: 'grid',
+          gridTemplateColumns: wordOptions ? '1fr' : '1fr 1fr',
+          gap: wordOptions ? 8 : 10,
+          marginTop: noClock ? 18 : 0,
+        }}>
           {S.options.map(o =>
-            <button key={o} onClick={() => actions.pickOption(o)} style={optionButtonStyle(stOf(o), c, font, 'pill')}>{o}</button>
-          )}
-        </div>
-        <Feedback c={c} S={S} />
-      </>
-    );
-  }
-
-  if (mode === 'wort-lesen') {
-    const correctWord = wordFromQ(S.question);
-    const stOf = (v) => !S.locked ? (S.selected === v ? 'selected' : '')
-                        : v === correctWord ? 'correct' : v === S.selected ? 'wrong' : 'faded';
-    return (
-      <>
-        {prompt}
-        {clockBlock}
-        <div data-testid="options" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 8 }}>
-          {S.options.map(o =>
-            <button key={o} onClick={() => actions.pickOption(o)} style={optionButtonStyle(stOf(o), c, font, 'row')}>{o}</button>
+            <button key={o} onClick={() => actions.pickOption(o)}
+              style={optionButtonStyle(stOf(o), c, font, wordOptions ? 'row' : 'pill')}>{o}</button>
           )}
         </div>
         <Feedback c={c} S={S} />
@@ -1365,13 +1382,17 @@ function UhrzeitApp() {
   const { mastery, record, reset } = useMastery();
   const { id: themeId, resolvedId: resolvedThemeId, setId: setThemeId, T } = useTheme();
   const [levelId, setLevelId] = React.useState(() => {
-    try { return parseInt(localStorage.getItem(LEVEL_KEY) || '0', 10) || 0; }
-    catch { return 0; }
+    try {
+      const stored = localStorage.getItem(LEVEL_KEY);
+      const key = levelKeyFromStored(stored);
+      const idx = key ? LEVELS.findIndex(L => L.key === key) : 0;
+      return idx >= 0 ? idx : 0;
+    } catch { return 0; }
   });
   const [celeb, setCeleb] = React.useState(null);
 
   React.useEffect(() => {
-    try { localStorage.setItem(LEVEL_KEY, String(levelId)); } catch {}
+    try { localStorage.setItem(LEVEL_KEY, LEVELS[levelId].key); } catch {}
   }, [levelId]);
 
   const onMilestone = (s) => { setCeleb(s); setTimeout(() => setCeleb(null), 1600); };

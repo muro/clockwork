@@ -435,19 +435,68 @@ group('exercise: stellen / wort-stellen snap round-trip', () => {
 // TRANSITIONS BETWEEN EXERCISE TYPES
 // ─────────────────────────────────────────────────────────────
 group('transitions between exercises', () => {
-  test('LEVELS covers all four modes across learning and review levels', () => {
+  test('every mode pairs distinct prompt and answer modalities (no level compares the same thing on both sides)', () => {
+    for (const [mode, spec] of Object.entries(MODE_SPECS)) {
+      ok(spec.prompt !== spec.answer,
+        `mode "${mode}" has the same modality on both sides (${spec.prompt} → ${spec.answer})`);
+    }
+  });
+  test('every modality is a known kind', () => {
+    const kinds = new Set(['clock', 'digital', 'word']);
+    for (const [mode, spec] of Object.entries(MODE_SPECS)) {
+      ok(kinds.has(spec.prompt), `mode "${mode}" prompt=${spec.prompt} unknown`);
+      ok(kinds.has(spec.answer), `mode "${mode}" answer=${spec.answer} unknown`);
+    }
+  });
+  test('ALL_MODES is exactly the keys of MODE_SPECS', () => {
+    eq(ALL_MODES.length, Object.keys(MODE_SPECS).length);
+    for (const m of ALL_MODES) ok(MODE_SPECS[m], `${m} in ALL_MODES but missing from MODE_SPECS`);
+  });
+  test('every mode used in LEVELS has a MODE_SPECS entry', () => {
+    const used = new Set();
+    for (const l of LEVELS) {
+      if (l.mode) used.add(l.mode);
+      if (l.modes) for (const m of l.modes) used.add(m);
+    }
+    for (const m of used) ok(MODE_SPECS[m], `mode "${m}" used in LEVELS but missing from MODE_SPECS`);
+  });
+  test('modeView returns null for unknown modes and a stable shape for known ones', () => {
+    eq(modeView('does-not-exist'), null);
+    for (const m of ALL_MODES) {
+      const v = modeView(m);
+      ok(v, `modeView(${m}) returned null`);
+      ok(typeof v.promptKind === 'string' && typeof v.answerKind === 'string',
+        `modeView(${m}) missing promptKind/answerKind`);
+      eq(v.showClock, v.promptKind === 'clock' || v.answerKind === 'clock',
+        `modeView(${m}).showClock inconsistent with kinds`);
+      eq(v.pickOption, v.answerKind !== 'clock',
+        `modeView(${m}).pickOption inconsistent with answerKind`);
+    }
+  });
+  test('LEVELS covers all six modes across learning and review levels', () => {
     const modes = new Set();
     for (const l of LEVELS) {
       if (l.mode) modes.add(l.mode);
       if (l.modes) for (const m of l.modes) modes.add(m);
     }
-    eq(modes.has('lesen'), true);
-    eq(modes.has('stellen'), true);
-    eq(modes.has('wort-lesen'), true);
-    eq(modes.has('wort-stellen'), true);
+    for (const m of ALL_MODES) ok(modes.has(m), `mode ${m} missing from LEVELS`);
   });
-  test('LEVELS ids are sequential and unique', () => {
-    LEVELS.forEach((l, i) => eq(l.id, i, `id at ${i}`));
+  test('LEVELS use stable string keys, all unique and non-empty', () => {
+    const seen = new Set();
+    for (const l of LEVELS) {
+      ok(typeof l.key === 'string' && l.key.length > 0, `key missing on ${l.title}`);
+      ok(!seen.has(l.key), `duplicate key ${l.key}`);
+      seen.add(l.key);
+    }
+  });
+  test('digital↔word levels exist for halbe / viertel / fuenf only (not volle, not 24h, not minute)', () => {
+    const targets = LEVELS.filter(l => l.mode === 'digital-wort' || l.mode === 'wort-digital');
+    eq(targets.length, 6, `expected 6 digital↔word levels, got ${targets.length}`);
+    for (const l of targets) {
+      ok(['halbe', 'viertel', 'fuenf'].includes(l.minuteSet),
+        `digital↔word level on minuteSet=${l.minuteSet} (${l.key})`);
+      ok(!l.hour24, `digital↔word level should not be 24h (${l.key})`);
+    }
   });
   test('makeQuestion matches the level-effective minuteSet', () => {
     for (const level of LEVELS) {
@@ -494,44 +543,67 @@ group('transitions between exercises', () => {
 });
 
 group('review levels', () => {
-  test('there are exactly two — after viertel and after fuenf', () => {
+  test('there are exactly three — after halbe, after viertel, after fuenf', () => {
     const reviews = LEVELS.filter(l => l.review);
-    eq(reviews.length, 2, `got ${reviews.length} review levels`);
+    eq(reviews.length, 3, `got ${reviews.length} review levels`);
+    eq(reviews.map(r => r.key).join(','),
+       'review-after-halbe,review-after-viertel,review-after-fuenf');
   });
-  test('first review sits immediately after the viertel block', () => {
-    // The viertel block ends with viertel/stellen; the review sits right after.
-    const i = LEVELS.findIndex(l => l.review);
-    ok(i > 0, 'review exists');
-    eq(LEVELS[i - 1].minuteSet, 'viertel');
-    eq(LEVELS[i - 1].mode,      'stellen');
-    eq(LEVELS[i].minuteSets.join(','), 'volle,halbe,viertel');
+  test('each review sits at the end of its tier block', () => {
+    const checks = [
+      { key: 'review-after-halbe',   tail: 'halbe',   union: 'volle,halbe' },
+      { key: 'review-after-viertel', tail: 'viertel', union: 'volle,halbe,viertel' },
+      { key: 'review-after-fuenf',   tail: 'fuenf',   union: 'volle,halbe,viertel,fuenf' },
+    ];
+    for (const c of checks) {
+      const i = LEVELS.findIndex(l => l.key === c.key);
+      ok(i > 0, `${c.key} exists`);
+      eq(LEVELS[i - 1].minuteSet, c.tail, `${c.key} preceded by a ${c.tail} level`);
+      eq(LEVELS[i].minuteSets.join(','), c.union);
+    }
   });
-  test('second review sits immediately after the fuenf block', () => {
-    const iAll = LEVELS.map((l, i) => l.review ? i : -1).filter(i => i >= 0);
-    const i = iAll[1];
-    eq(LEVELS[i - 1].minuteSet, 'fuenf');
-    eq(LEVELS[i - 1].mode,      'stellen');
-    eq(LEVELS[i].minuteSets.join(','), 'volle,halbe,viertel,fuenf');
+  test('stellen and wort-stellen for the same tier are adjacent', () => {
+    // The two "set the clock" exercises (from a digital prompt and from a
+    // word prompt) form a natural pair — they vary only in the prompt
+    // modality. Inserting other modes between them disrupts the learner's
+    // mental model, so guard against it.
+    for (const t of ['halbe', 'viertel', 'fuenf']) {
+      const sI = LEVELS.findIndex(l => l.mode === 'stellen'      && l.minuteSet === t && !l.hour24);
+      const wI = LEVELS.findIndex(l => l.mode === 'wort-stellen' && l.minuteSet === t);
+      ok(sI >= 0 && wI >= 0, `stellen-${t} and wort-stellen-${t} both exist`);
+      eq(Math.abs(sI - wI), 1,
+        `stellen-${t} (${sI}) and wort-stellen-${t} (${wI}) should be adjacent`);
+    }
   });
-  test('review levels declare all four modes, no single scalar mode', () => {
+  test('each tier block ends with its translation drills (digital↔word) before the review', () => {
+    // The no-clock translation drills are post-graduate work for a tier —
+    // they should sit at the tail of the block, between the clock-using
+    // exercises and the review checkpoint.
+    for (const key of ['review-after-halbe', 'review-after-viertel', 'review-after-fuenf']) {
+      const i = LEVELS.findIndex(l => l.key === key);
+      const prev = LEVELS[i - 1];
+      ok(prev.mode === 'wort-digital' || prev.mode === 'digital-wort',
+        `${key} should be preceded by a translation drill, got ${prev.key}`);
+    }
+  });
+  test('review levels declare all six modes, no single scalar mode', () => {
     for (const r of LEVELS.filter(l => l.review)) {
-      ok(!r.mode, `review level ${r.id} must not set .mode`);
-      eq(new Set(r.modes).size, 4);
-      for (const m of ['lesen', 'stellen', 'wort-lesen', 'wort-stellen']) {
-        ok(r.modes.includes(m), `review ${r.id} missing ${m}`);
-      }
+      ok(!r.mode, `review level ${r.key} must not set .mode`);
+      eq(new Set(r.modes).size, ALL_MODES.length);
+      for (const m of ALL_MODES) ok(r.modes.includes(m), `review ${r.key} missing ${m}`);
     }
   });
   test('makeQuestion on a review level picks a mode from the level list', () => {
     const review = LEVELS.find(l => l.review);
     const seen = new Set();
-    for (let i = 0; i < 200; i++) {
+    for (let i = 0; i < 400; i++) {
       const q = makeQuestion(review);
       ok(review.modes.includes(q.mode), `q.mode=${q.mode} not in level.modes`);
       seen.add(q.mode);
     }
-    // With 200 draws over 4 modes, coverage should be complete.
-    eq(seen.size, 4, `only saw modes: ${[...seen].join(',')}`);
+    // With 400 draws over 6 modes, all should appear (digital↔word are
+    // suppressed on minute=0, but the review draws non-volle minutes too).
+    eq(seen.size, ALL_MODES.length, `only saw modes: ${[...seen].join(',')}`);
   });
   test('makeQuestion on a review level distributes minutes across the union', () => {
     const review = LEVELS.find(l => l.review && l.minuteSets.includes('fuenf'));
@@ -542,6 +614,29 @@ group('review levels', () => {
       ok(mins.has(m), `m=${m} never drawn in 400 trials`);
     }
   });
+  test('reviews re-roll digital↔word when minute lands on the full hour', () => {
+    // Curated rand stream: hour pick, minute pick (→ index 0 → m=0), then
+    // mode pick that without the guard would yield digital-wort (index 4 of
+    // 6 modes), then a fall-through rand=0 → lesen. The guard should swap
+    // the trivial mode out before the question returns.
+    const review = LEVELS.find(l => l.key === 'review-after-fuenf');
+    const stream = [0, 0, 4/6, 0];
+    let i = 0;
+    const rand = () => (i < stream.length ? stream[i++] : 0);
+    const q = makeQuestion(review, rand);
+    eq(q.m, 0, 'forced minute=0');
+    ok(q.mode !== 'digital-wort' && q.mode !== 'wort-digital',
+       `expected non-trivial mode, got ${q.mode}`);
+  });
+  test('digital↔word still appears on non-volle minutes in reviews', () => {
+    const review = LEVELS.find(l => l.key === 'review-after-fuenf');
+    let saw = 0;
+    for (let i = 0; i < 600; i++) {
+      const q = makeQuestion(review);
+      if ((q.mode === 'digital-wort' || q.mode === 'wort-digital') && q.m !== 0) saw++;
+    }
+    ok(saw > 0, 'digital↔word should fire on non-volle minutes');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -551,82 +646,101 @@ group('localStorage persistence', () => {
   test('saveMastery / loadMastery round-trip', () => {
     resetMastery();
     eq(loadMastery(), {});
-    const m = recordMastery({}, 5, 10);
+    const m = recordMastery({}, 'lesen-volle', 10);
     saveMastery(m);
     eq(loadMastery(), m);
   });
   test('resetMastery clears both MASTERY_KEY and LEVEL_KEY', () => {
-    localStorage.setItem(MASTERY_KEY, JSON.stringify({ 0: { tier: 1, best: 8, last: 8 } }));
-    localStorage.setItem(LEVEL_KEY, '7');
+    localStorage.setItem(MASTERY_KEY, JSON.stringify({ 'lesen-volle': { tier: 1, best: 8, last: 8 } }));
+    localStorage.setItem(LEVEL_KEY, 'stellen-halbe');
     resetMastery();
     eq(localStorage.getItem(MASTERY_KEY), null);
     eq(localStorage.getItem(LEVEL_KEY), null);
   });
-  test('level choice persists through load cycle', () => {
-    resetMastery();
-    localStorage.setItem(LEVEL_KEY, '4');
-    eq(parseInt(localStorage.getItem(LEVEL_KEY) || '0', 10), 4);
-    resetMastery();
-    eq(parseInt(localStorage.getItem(LEVEL_KEY) || '0', 10), 0);
-  });
-  test('mastery keyed by levelId is independent per level', () => {
+  test('mastery keyed by stable level key is independent per level', () => {
     let m = {};
-    m = recordMastery(m, 0, 10);
-    m = recordMastery(m, 5, 8);
-    eq(m[0].tier, 3);
-    eq(m[5].tier, 1);
-    ok(m[1] === undefined, 'level 1 untouched');
+    m = recordMastery(m, 'lesen-volle', 10);
+    m = recordMastery(m, 'stellen-halbe', 8);
+    eq(m['lesen-volle'].tier, 3);
+    eq(m['stellen-halbe'].tier, 1);
+    ok(m['lesen-halbe'] === undefined, 'unrelated level untouched');
+  });
+  test('levelKeyFromStored translates legacy numeric values, validates strings', () => {
+    eq(levelKeyFromStored('0'),  'lesen-volle');
+    eq(levelKeyFromStored('15'), 'review-after-fuenf');
+    eq(levelKeyFromStored('lesen-halbe'), 'lesen-halbe');
+    eq(levelKeyFromStored('does-not-exist'), null);
+    eq(levelKeyFromStored(null), null);
+    eq(levelKeyFromStored(''), null);
   });
 });
 
 // ─────────────────────────────────────────────────────────────
-// MASTERY MIGRATION — v1 (pre-review-levels) → v2
-// v1 had 18 levels (0..17). v2 inserts review levels at 10 and 15,
-// shifting all levels that sat past those insertion points.
-//   old [0..9]   → unchanged
-//   old [10..13] → +1  (fuenf block; now at 11..14)
-//   old [14..15] → +2  (24h; now at 16..17)
-//   old [16..17] → +2  (minute; now at 18..19)
+// MASTERY MIGRATION — chained v1 → v2 → v3
+//   v1: numeric ids, 18 levels (no reviews).
+//   v2: numeric ids, 20 levels (review levels inserted at 10 and 15).
+//   v3: stable string keys; digital↔word levels and a third review added.
 // ─────────────────────────────────────────────────────────────
-group('mastery migration v1 → v2', () => {
+group('mastery migration', () => {
   const V1_KEY = 'uhrzeit.mastery.v1';
-  test('MASTERY_KEY is v2', () => eq(MASTERY_KEY, 'uhrzeit.mastery.v2'));
-  test('loadMastery migrates v1 ids into their v2 positions', () => {
+  const V2_KEY = 'uhrzeit.mastery.v2';
+  const clearAll = () => {
     localStorage.removeItem(MASTERY_KEY);
-    localStorage.setItem(V1_KEY, JSON.stringify({
-      0:  { tier: 3, best: 10, last: 10 }, // unchanged
-      9:  { tier: 2, best: 9,  last: 9  }, // unchanged (viertel/stellen)
-      10: { tier: 1, best: 8,  last: 8  }, // was fuenf/lesen → 11
-      13: { tier: 3, best: 10, last: 10 }, // was fuenf/stellen → 14
-      14: { tier: 2, best: 9,  last: 9  }, // was 24h/lesen → 16
-      17: { tier: 1, best: 8,  last: 8  }, // was minute/stellen → 19
+    localStorage.removeItem(V1_KEY);
+    localStorage.removeItem(V2_KEY);
+  };
+  test('MASTERY_KEY is v3', () => eq(MASTERY_KEY, 'uhrzeit.mastery.v3'));
+
+  test('migrateV2ToV3 maps every v2 numeric id to a known v3 stable key', () => {
+    for (const [oldId, key] of Object.entries(V2_TO_V3)) {
+      ok(LEVELS.some(L => L.key === key),
+        `v2 id ${oldId} → ${key} but no level has that key`);
+    }
+  });
+
+  test('v2 → v3: numeric ids translate to stable keys', () => {
+    clearAll();
+    localStorage.setItem(V2_KEY, JSON.stringify({
+      0:  { tier: 3, best: 10, last: 10 }, // → lesen-volle
+      10: { tier: 2, best: 9,  last: 9  }, // → review-after-viertel
+      19: { tier: 1, best: 8,  last: 8  }, // → stellen-minute
     }));
     const loaded = loadMastery();
-    eq(loaded[0].tier, 3,  'old 0 stayed');
-    eq(loaded[9].tier, 2,  'old 9 stayed');
-    eq(loaded[11].tier, 1, 'old 10 → 11');
-    eq(loaded[14].tier, 3, 'old 13 → 14');
-    eq(loaded[16].tier, 2, 'old 14 → 16');
-    eq(loaded[19].tier, 1, 'old 17 → 19');
+    eq(loaded['lesen-volle'].tier, 3);
+    eq(loaded['review-after-viertel'].tier, 2);
+    eq(loaded['stellen-minute'].tier, 1);
+    eq(localStorage.getItem(V2_KEY), null, 'v2 cleared after migration');
+    eq(JSON.parse(localStorage.getItem(MASTERY_KEY))['lesen-volle'].tier, 3);
   });
-  test('after migration v1 is cleared and v2 holds the migrated data', () => {
-    localStorage.removeItem(MASTERY_KEY);
-    localStorage.setItem(V1_KEY, JSON.stringify({ 17: { tier: 3, best: 10, last: 10 } }));
-    loadMastery();
+
+  test('v1 → v2 → v3: chained migration preserves progress all the way', () => {
+    clearAll();
+    localStorage.setItem(V1_KEY, JSON.stringify({
+      0:  { tier: 3, best: 10, last: 10 }, // v1 0 → v2 0  → lesen-volle
+      9:  { tier: 2, best: 9,  last: 9  }, // v1 9 → v2 9  → stellen-viertel
+      13: { tier: 3, best: 10, last: 10 }, // v1 13 → v2 14 → stellen-fuenf
+      17: { tier: 1, best: 8,  last: 8  }, // v1 17 → v2 19 → stellen-minute
+    }));
+    const loaded = loadMastery();
+    eq(loaded['lesen-volle'].tier, 3,    'v1 0  → lesen-volle');
+    eq(loaded['stellen-viertel'].tier, 2,'v1 9  → stellen-viertel');
+    eq(loaded['stellen-fuenf'].tier, 3,  'v1 13 → stellen-fuenf');
+    eq(loaded['stellen-minute'].tier, 1, 'v1 17 → stellen-minute');
     eq(localStorage.getItem(V1_KEY), null, 'v1 cleared');
-    const v2 = JSON.parse(localStorage.getItem(MASTERY_KEY));
-    eq(v2[19].tier, 3, 'v2 holds the shifted value');
   });
-  test('v2 data wins over lingering v1 data', () => {
-    localStorage.setItem(MASTERY_KEY, JSON.stringify({ 5: { tier: 2, best: 9, last: 9 } }));
+
+  test('v3 data wins over lingering v2 / v1 data', () => {
+    clearAll();
+    localStorage.setItem(MASTERY_KEY, JSON.stringify({ 'lesen-halbe': { tier: 2, best: 9, last: 9 } }));
+    localStorage.setItem(V2_KEY, JSON.stringify({ 0: { tier: 3, best: 10, last: 10 } }));
     localStorage.setItem(V1_KEY, JSON.stringify({ 17: { tier: 3, best: 10, last: 10 } }));
     const loaded = loadMastery();
-    eq(loaded[5].tier, 2);
-    ok(loaded[19] === undefined, 'v1 not re-migrated when v2 exists');
-    // v1 should have been left alone in this case (v2 already ran the migration
-    // historically — don't clobber it).
-    ok(localStorage.getItem(V1_KEY) !== null, 'v1 preserved when v2 already present');
-    localStorage.removeItem(V1_KEY);
+    eq(loaded['lesen-halbe'].tier, 2, 'v3 value preserved');
+    ok(loaded['lesen-volle'] === undefined, 'v2 not re-migrated when v3 exists');
+    ok(loaded['stellen-minute'] === undefined, 'v1 not re-migrated when v3 exists');
+    ok(localStorage.getItem(V2_KEY) !== null, 'v2 preserved when v3 already present');
+    ok(localStorage.getItem(V1_KEY) !== null, 'v1 preserved when v3 already present');
+    clearAll();
   });
 });
 
