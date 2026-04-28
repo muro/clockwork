@@ -37,12 +37,14 @@ All runtime files live in `web/`. The repo root holds meta files
 | `web/tests.html` | 86 in-browser unit tests. Open directly or via the static server. |
 | `web/dandelion_*.png` | Bloom artwork used for level mastery and feedback overlays. |
 | `web/icon.png` | 512×512 app icon — clock face overlaid on `dandelion_single.png`, masked to the flower silhouette. Generated; see [Icon](#icon). |
-| `tools/build_icon.py` | Regenerates `web/icon.png`. See [Icon](#icon). |
+| `web/icon-192.png` | 192×192 derivative of `icon.png` for the Android manifest. Generated. |
+| `tools/build_icon.py` | Regenerates `web/icon.png` and `web/icon-192.png`. See [Icon](#icon). |
 | `.claude/launch.json` | Claude Code preview server config (serves from `web/` on :8765). |
 
 ## Icon
 
-`web/icon.png` is built, not hand-painted. To regenerate:
+`web/icon.png` (512×512) and `web/icon-192.png` (a LANCZOS resize for the
+Android manifest) are built, not hand-painted. To regenerate both:
 
 ```sh
 pip3 install Pillow
