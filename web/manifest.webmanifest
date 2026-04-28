@@ -1,0 +1,16 @@
+{
+  "name": "Uhrzeit Lernen",
+  "short_name": "Uhrzeit",
+  "description": "German clock-reading practice — four exercise types across a 20-level curriculum.",
+  "lang": "de",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#fde884",
+  "background_color": "#fff1dc",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon.png",     "sizes": "512x512", "type": "image/png" }
+  ]
+}
