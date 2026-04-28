@@ -549,18 +549,41 @@ group('review levels', () => {
     eq(reviews.map(r => r.key).join(','),
        'review-after-halbe,review-after-viertel,review-after-fuenf');
   });
-  test('each review sits immediately after the corresponding stellen block', () => {
+  test('each review sits at the end of its tier block', () => {
     const checks = [
-      { key: 'review-after-halbe',   prevMinSet: 'halbe',   union: 'volle,halbe' },
-      { key: 'review-after-viertel', prevMinSet: 'viertel', union: 'volle,halbe,viertel' },
-      { key: 'review-after-fuenf',   prevMinSet: 'fuenf',   union: 'volle,halbe,viertel,fuenf' },
+      { key: 'review-after-halbe',   tail: 'halbe',   union: 'volle,halbe' },
+      { key: 'review-after-viertel', tail: 'viertel', union: 'volle,halbe,viertel' },
+      { key: 'review-after-fuenf',   tail: 'fuenf',   union: 'volle,halbe,viertel,fuenf' },
     ];
     for (const c of checks) {
       const i = LEVELS.findIndex(l => l.key === c.key);
       ok(i > 0, `${c.key} exists`);
-      eq(LEVELS[i - 1].minuteSet, c.prevMinSet, `${c.key} preceded by ${c.prevMinSet}`);
-      eq(LEVELS[i - 1].mode,      'stellen',     `${c.key} preceded by stellen`);
+      eq(LEVELS[i - 1].minuteSet, c.tail, `${c.key} preceded by a ${c.tail} level`);
       eq(LEVELS[i].minuteSets.join(','), c.union);
+    }
+  });
+  test('stellen and wort-stellen for the same tier are adjacent', () => {
+    // The two "set the clock" exercises (from a digital prompt and from a
+    // word prompt) form a natural pair — they vary only in the prompt
+    // modality. Inserting other modes between them disrupts the learner's
+    // mental model, so guard against it.
+    for (const t of ['halbe', 'viertel', 'fuenf']) {
+      const sI = LEVELS.findIndex(l => l.mode === 'stellen'      && l.minuteSet === t && !l.hour24);
+      const wI = LEVELS.findIndex(l => l.mode === 'wort-stellen' && l.minuteSet === t);
+      ok(sI >= 0 && wI >= 0, `stellen-${t} and wort-stellen-${t} both exist`);
+      eq(Math.abs(sI - wI), 1,
+        `stellen-${t} (${sI}) and wort-stellen-${t} (${wI}) should be adjacent`);
+    }
+  });
+  test('each tier block ends with its translation drills (digital↔word) before the review', () => {
+    // The no-clock translation drills are post-graduate work for a tier —
+    // they should sit at the tail of the block, between the clock-using
+    // exercises and the review checkpoint.
+    for (const key of ['review-after-halbe', 'review-after-viertel', 'review-after-fuenf']) {
+      const i = LEVELS.findIndex(l => l.key === key);
+      const prev = LEVELS[i - 1];
+      ok(prev.mode === 'wort-digital' || prev.mode === 'digital-wort',
+        `${key} should be preceded by a translation drill, got ${prev.key}`);
     }
   });
   test('review levels declare all six modes, no single scalar mode', () => {

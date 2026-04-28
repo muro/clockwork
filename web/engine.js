@@ -101,30 +101,37 @@ function modeView(mode) {
 // "drei Uhr" is too obvious) and not for 24h (German clock-words don't
 // distinguish AM/PM, so the answer would be ambiguous).
 const LEVELS = [
+  // Tier blocks all follow the same shape:
+  //   lesen → wort-lesen → wort-stellen → stellen   (clock-using pair-of-pairs)
+  //   digital-wort → wort-digital                   (no-clock translation drills)
+  //   review                                         (covers everything so far)
+  // Keeping wort-stellen and stellen adjacent matters: they're a pair that
+  // varies only in the prompt's modality. The translation drills are a
+  // distinct skill — they sit at the end of the block.
   { key: "lesen-volle",          mode: "lesen",        minuteSet: "volle",   hour24: false, title: "Volle Stunden",      sub: "Uhr ablesen · :00" },
   { key: "stellen-volle",        mode: "stellen",      minuteSet: "volle",   hour24: false, title: "Volle stellen",      sub: "Uhr stellen · :00" },
   { key: "lesen-halbe",          mode: "lesen",        minuteSet: "halbe",   hour24: false, title: "Halbe Stunden",      sub: "Uhr ablesen · :30" },
   { key: "wort-lesen-halbe",     mode: "wort-lesen",   minuteSet: "halbe",   hour24: false, title: "halb … auf Deutsch", sub: "Welcher Satz passt?" },
   { key: "wort-stellen-halbe",   mode: "wort-stellen", minuteSet: "halbe",   hour24: false, title: "halb … stellen",     sub: "Satz zur Uhr" },
+  { key: "stellen-halbe",        mode: "stellen",      minuteSet: "halbe",   hour24: false, title: "Halbe stellen",      sub: "Uhr stellen · :30" },
   { key: "digital-wort-halbe",   mode: "digital-wort", minuteSet: "halbe",   hour24: false, title: "halbe · Wort finden", sub: "Wie heißt 3:30?" },
   { key: "wort-digital-halbe",   mode: "wort-digital", minuteSet: "halbe",   hour24: false, title: "halbe · Zeit finden", sub: 'Wie spät ist „halb vier"?' },
-  { key: "stellen-halbe",        mode: "stellen",      minuteSet: "halbe",   hour24: false, title: "Halbe stellen",      sub: "Uhr stellen · :30" },
   { key: "review-after-halbe",   review: true, modes: ALL_MODES, minuteSets: ["volle", "halbe"],
     hour24: false, title: "Wiederholung · bis halbe", sub: "Alles Gelernte gemischt" },
   { key: "lesen-viertel",        mode: "lesen",        minuteSet: "viertel", hour24: false, title: "Viertelstunden",     sub: "Uhr ablesen · :15, :45" },
   { key: "wort-lesen-viertel",   mode: "wort-lesen",   minuteSet: "viertel", hour24: false, title: "Viertel · Wörter",   sub: "Welcher Satz passt?" },
   { key: "wort-stellen-viertel", mode: "wort-stellen", minuteSet: "viertel", hour24: false, title: "Viertel · stellen",  sub: "Satz zur Uhr" },
+  { key: "stellen-viertel",      mode: "stellen",      minuteSet: "viertel", hour24: false, title: "Viertel stellen",    sub: "Uhr stellen · :15, :45" },
   { key: "digital-wort-viertel", mode: "digital-wort", minuteSet: "viertel", hour24: false, title: "Viertel · Wort finden", sub: "Wie heißt 6:45?" },
   { key: "wort-digital-viertel", mode: "wort-digital", minuteSet: "viertel", hour24: false, title: "Viertel · Zeit finden", sub: 'Wie spät ist „Viertel vor sieben"?' },
-  { key: "stellen-viertel",      mode: "stellen",      minuteSet: "viertel", hour24: false, title: "Viertel stellen",    sub: "Uhr stellen · :15, :45" },
   { key: "review-after-viertel", review: true, modes: ALL_MODES, minuteSets: ["volle", "halbe", "viertel"],
     hour24: false, title: "Wiederholung · bis Viertel", sub: "Alles Gelernte gemischt" },
   { key: "lesen-fuenf",          mode: "lesen",        minuteSet: "fuenf",   hour24: false, title: "5-Minuten",          sub: "Uhr ablesen · alle 5" },
   { key: "wort-lesen-fuenf",     mode: "wort-lesen",   minuteSet: "fuenf",   hour24: false, title: "5-Min. · Wörter",    sub: "Welcher Satz passt?" },
   { key: "wort-stellen-fuenf",   mode: "wort-stellen", minuteSet: "fuenf",   hour24: false, title: "5-Min. · stellen",   sub: "Satz zur Uhr" },
+  { key: "stellen-fuenf",        mode: "stellen",      minuteSet: "fuenf",   hour24: false, title: "5-Min. stellen",     sub: "Uhr stellen · alle 5" },
   { key: "digital-wort-fuenf",   mode: "digital-wort", minuteSet: "fuenf",   hour24: false, title: "5-Min. · Wort finden", sub: "Wie heißt 4:25?" },
   { key: "wort-digital-fuenf",   mode: "wort-digital", minuteSet: "fuenf",   hour24: false, title: "5-Min. · Zeit finden", sub: 'Wie spät ist „fünf vor halb fünf"?' },
-  { key: "stellen-fuenf",        mode: "stellen",      minuteSet: "fuenf",   hour24: false, title: "5-Min. stellen",     sub: "Uhr stellen · alle 5" },
   { key: "review-after-fuenf",   review: true, modes: ALL_MODES, minuteSets: ["volle", "halbe", "viertel", "fuenf"],
     hour24: false, title: "Wiederholung · bis 5-Min.", sub: "Alles Gelernte gemischt" },
   { key: "lesen-fuenf-24h",      mode: "lesen",        minuteSet: "fuenf",   hour24: true,  title: "24 Stunden",         sub: "Uhr ablesen · 24h" },
