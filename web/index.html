@@ -1057,10 +1057,11 @@ function Body({ S, actions, level, c, theme, font, labelFont, accent }) {
   const isWord = mode === 'wort-lesen' || mode === 'wort-stellen' || mode === 'digital-wort';
   const noClock = TEXT_ONLY_MODES.has(mode);
   // Modes whose prompt itself is a big digital or word string (rather than
-  // a clock face). The two stellen modes already fall here; the new
-  // digital↔word modes mirror them on the prompt side.
-  const showDigitalPrompt = mode === 'stellen' || mode === 'wort-digital';
-  const showWordPrompt    = mode === 'wort-stellen' || mode === 'digital-wort';
+  // a clock face). digital-wort = digital prompt → word answer;
+  // wort-digital = word prompt → digital answer. The mode name reads
+  // "<prompt>-<answer>".
+  const showDigitalPrompt = mode === 'stellen' || mode === 'digital-wort';
+  const showWordPrompt    = mode === 'wort-stellen' || mode === 'wort-digital';
 
   // Prompt slot — fixed min-height so the clock sits at the same Y in every
   // mode. Content is flex-end-aligned: modes with only a small label leave
