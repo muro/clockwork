@@ -38,6 +38,7 @@ All runtime files live in `web/`. The repo root holds meta files
 | `web/dandelion_*.png` | Bloom artwork used for level mastery and feedback overlays. |
 | `web/icon.png` | 512×512 app icon — clock face overlaid on `dandelion_single.png`, masked to the flower silhouette. Generated; see [Icon](#icon). |
 | `web/icon-192.png` | 192×192 derivative of `icon.png` for the Android manifest. Generated. |
+| `web/manifest.webmanifest` | Web App Manifest. Lets the app be installed to the home screen on Android (Chrome) and provides metadata for iOS Safari "Add to Home Screen". |
 | `tools/build_icon.py` | Regenerates `web/icon.png` and `web/icon-192.png`. See [Icon](#icon). |
 | `.claude/launch.json` | Claude Code preview server config (serves from `web/` on :8765). |
 
