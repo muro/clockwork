@@ -55,6 +55,7 @@ python3 tools/build_icon.py   # writes web/icon.png and web/icon-192.png
 
 ## Conventions
 
+- Work in red-green TDD: add a failing test in `web/tests.html` first, make it pass with the smallest change, then refactor. Run `tests.html` between steps.
 - No build step; do not introduce one. JSX runs through `@babel/standalone` in the browser.
 - Don't add npm/bundler/test-runner dependencies without an explicit ask.
 - Pure logic goes in `engine.js` and is exported via `Object.assign(window, { ... })` at the bottom of the file.
