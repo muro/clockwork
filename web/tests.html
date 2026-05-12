@@ -37,7 +37,9 @@
 <button onclick="location.reload()">Re-run</button>
 <div id="results"></div>
 
-<script src="engine.js"></script>
+<script>
+document.write(`<script src="engine.js?cache=${Date.now()}"><\/script>`);
+</script>
 <script>
 // ─────────────────────────────────────────────────────────────
 // tiny test framework
@@ -81,9 +83,29 @@ group('hourName & parseTime', () => {
   test('hourName cycles 12-based', () => {
     eq(hourName(1), 'eins'); eq(hourName(12), 'zwölf'); eq(hourName(13), 'eins');
   });
+  test('language metadata normalizes to supported languages', () => {
+    eq(LANGUAGES.map(l => l.key), ['de', 'en']);
+    eq(normalizeLanguage('de'), 'de');
+    eq(normalizeLanguage('en'), 'en');
+    eq(normalizeLanguage('fr'), 'de');
+    eq(normalizeLanguage(null), 'de');
+  });
+  test('hourName supports English without changing the German default', () => {
+    eq(hourName(11), 'elf');
+    eq(hourName(11, 'en'), 'eleven');
+    eq(hourName(12, 'en'), 'twelve');
+    eq(hourName(13, 'en'), 'one');
+  });
   test('parseTime(3, 0) → "drei Uhr"', () => {
     const p = parseTime(3, 0);
     eq(p.fullWord, 'drei Uhr'); eq(p.minute, null); eq(p.next, 4);
+  });
+  test('parseTime supports English clock words', () => {
+    eq(parseTime(12, 0, 'en').fullWord, "twelve o'clock");
+    eq(parseTime(3, 30, 'en').fullWord, 'half past three');
+    eq(parseTime(11, 40, 'en').fullWord, 'twenty to twelve');
+    eq(parseTime(11, 45, 'en').fullWord, 'quarter to twelve');
+    eq(parseTime(5, 25, 'en').fullWord, 'twenty-five past five');
   });
   test('parseTime(3, 30) → "halb vier" (advances hour)', () => {
     const p = parseTime(3, 30);
@@ -179,6 +201,34 @@ group('digitalFromQ / wordFromQ', () => {
   test('wordFromQ returns parsed.fullWord', () => {
     eq(wordFromQ({ parsed: parseTime(3, 30) }), 'halb vier');
   });
+  test('wordFromQ can render a requested language from h/m', () => {
+    const q = { h: 11, m: 40, parsed: parseTime(11, 40) };
+    eq(wordFromQ(q, 'en'), 'twenty to twelve');
+    eq(wordFromQ(q, 'de'), 'zwanzig vor zwölf');
+  });
+});
+
+group('English AM/PM helpers', () => {
+  test('AM/PM formatting handles morning, evening, noon, and midnight', () => {
+    eq(ampmTimeFromQ({ dh: 8,  m: 30 }), '8:30 a.m.');
+    eq(ampmTimeFromQ({ dh: 20, m: 30 }), '8:30 p.m.');
+    eq(ampmTimeFromQ({ dh: 12, m: 0  }), '12:00 p.m.');
+    eq(ampmTimeFromQ({ dh: 0,  m: 0  }), '12:00 a.m.');
+  });
+  test('daypart formatting uses exact noon and midnight only at :00', () => {
+    eq(daypartTimeFromQ({ dh: 8,  m: 30 }), '8:30 in the morning');
+    eq(daypartTimeFromQ({ dh: 20, m: 30 }), '8:30 in the evening');
+    eq(daypartTimeFromQ({ dh: 12, m: 0  }), '12:00 at noon');
+    eq(daypartTimeFromQ({ dh: 12, m: 30 }), '12:30 in the afternoon');
+    eq(daypartTimeFromQ({ dh: 0,  m: 0  }), '12:00 at midnight');
+    eq(daypartTimeFromQ({ dh: 0,  m: 30 }), '12:30 at night');
+  });
+  test('24h formatting pads the hour', () => {
+    eq(digital24FromQ({ dh: 20, m: 30 }), '20:30');
+    eq(digital24FromQ({ dh: 12, m: 0  }), '12:00');
+    eq(digital24FromQ({ dh: 0,  m: 0  }), '00:00');
+    eq(digital24FromQ({ dh: 8,  m: 30 }), '08:30');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -268,6 +318,20 @@ group('recordMastery', () => {
     let m = recordMastery({}, 3, 10);             // tier 3, best 10
     m = recordMastery(m, 3, 5);                    // worse run should not lower tier/best
     eq(m[3].tier, 3); eq(m[3].best, 10); eq(m[3].last, 5);
+  });
+});
+
+group('level progress layout', () => {
+  test('level track keeps two rows for the current German-size curriculum at app width', () => {
+    eq(levelTrackRowPlan(levelsForLanguage('de').length, 420).rowCount, 2);
+  });
+  test('level track adds another row when English-only levels crowd the snake', () => {
+    ok(levelTrackRowPlan(levelsForLanguage('en').length, 420).rowCount > 2);
+  });
+  test('level track leaves enough side inset for U-turn bends', () => {
+    const plan = levelTrackRowPlan(levelsForLanguage('en').length, 420);
+    ok(plan.inset >= plan.rowSpacing / 2 + 4,
+      `inset ${plan.inset} should contain turn radius ${plan.rowSpacing / 2}`);
   });
 });
 
@@ -409,6 +473,59 @@ group('exercise: wort-lesen', () => {
     contains(options, 'Viertel vor vier');
     contains(options, 'Viertel nach zwei');
   });
+  test('English phrase options include correct and are 4 unique', () => {
+    const level = { mode: 'wort-lesen', minuteSet: 'fuenf', hour24: false };
+    for (const m of MINUTE_SETS.fuenf) {
+      for (let h = 1; h <= 12; h++) {
+        const q = { h, m, dh: h, language: 'en', parsed: parseTime(h, m, 'en') };
+        const { options } = buildWordOptions(q, level, 'en');
+        eq(options.length, 4, `h=${h} m=${m}`);
+        eq(new Set(options).size, 4, `unique h=${h} m=${m}`);
+        contains(options, wordFromQ(q, 'en'), `correct included h=${h} m=${m}`);
+      }
+    }
+  });
+  test('English 11:40 offers "twenty to twelve" with a past/to distractor', () => {
+    const q = { h: 11, m: 40, dh: 11, language: 'en', parsed: parseTime(11, 40, 'en') };
+    const { options } = buildWordOptions(q, { mode: 'wort-lesen', minuteSet: 'fuenf', hour24: false }, 'en');
+    contains(options, 'twenty to twelve');
+    contains(options, 'twenty past eleven');
+  });
+});
+
+group('exercise: English AM/PM text drills', () => {
+  const ampmLevel = { mode: 'daypart-ampm', minuteSets: ['volle','halbe','viertel','fuenf'], languages: ['en'] };
+  test('daypart → AM/PM options include the opposite half-day distractor', () => {
+    const q = { h: 8, m: 30, dh: 8, mode: 'daypart-ampm', language: 'en' };
+    const { options } = buildAmpmOptions(q, ampmLevel);
+    eq(options.length, 4);
+    eq(new Set(options).size, 4);
+    contains(options, '8:30 a.m.', 'correct');
+    contains(options, '8:30 p.m.', 'opposite half-day');
+  });
+  test('AM/PM → daypart options include the correct daypart wording', () => {
+    const q = { h: 8, m: 30, dh: 20, mode: 'ampm-daypart', language: 'en' };
+    const { options } = buildDaypartOptions(q, { ...ampmLevel, mode: 'ampm-daypart' });
+    eq(options.length, 4);
+    eq(new Set(options).size, 4);
+    contains(options, '8:30 in the evening', 'correct');
+  });
+  test('24h → AM/PM options include the opposite half-day distractor', () => {
+    const q = { h: 8, m: 30, dh: 20, mode: 'digital24-ampm', language: 'en' };
+    const { options } = buildAmpmOptions(q, { ...ampmLevel, mode: 'digital24-ampm' });
+    eq(options.length, 4);
+    eq(new Set(options).size, 4);
+    contains(options, '8:30 p.m.', 'correct');
+    contains(options, '8:30 a.m.', 'opposite half-day');
+  });
+  test('AM/PM → 24h options include padded 24h times', () => {
+    const q = { h: 8, m: 30, dh: 20, mode: 'ampm-digital24', language: 'en' };
+    const { options } = buildDigital24Options(q, { ...ampmLevel, mode: 'ampm-digital24' });
+    eq(options.length, 4);
+    eq(new Set(options).size, 4);
+    contains(options, '20:30', 'correct');
+    contains(options, '08:30', 'opposite half-day');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -442,7 +559,7 @@ group('transitions between exercises', () => {
     }
   });
   test('every modality is a known kind', () => {
-    const kinds = new Set(['clock', 'digital', 'word']);
+    const kinds = new Set(['clock', 'digital', 'word', 'daypartTime', 'ampmTime', 'digital24']);
     for (const [mode, spec] of Object.entries(MODE_SPECS)) {
       ok(kinds.has(spec.prompt), `mode "${mode}" prompt=${spec.prompt} unknown`);
       ok(kinds.has(spec.answer), `mode "${mode}" answer=${spec.answer} unknown`);
@@ -473,13 +590,37 @@ group('transitions between exercises', () => {
         `modeView(${m}).pickOption inconsistent with answerKind`);
     }
   });
-  test('LEVELS covers all six modes across learning and review levels', () => {
+  test('LEVELS covers every mode across learning and review levels', () => {
     const modes = new Set();
     for (const l of LEVELS) {
       if (l.mode) modes.add(l.mode);
       if (l.modes) for (const m of l.modes) modes.add(m);
     }
     for (const m of ALL_MODES) ok(modes.has(m), `mode ${m} missing from LEVELS`);
+  });
+  test('language-filtered curriculum keeps AM/PM levels English-only', () => {
+    const ampmModes = ['daypart-ampm', 'ampm-daypart', 'digital24-ampm', 'ampm-digital24'];
+    const deLevels = levelsForLanguage('de');
+    const enLevels = levelsForLanguage('en');
+    ok(enLevels.length > deLevels.length, 'English should expose extra AM/PM practice');
+    for (const mode of ampmModes) {
+      ok(!deLevels.some(l => l.mode === mode), `German should not include ${mode}`);
+      ok(enLevels.some(l => l.mode === mode), `English should include ${mode}`);
+    }
+    eq(levelsForLanguage('fr').length, deLevels.length, 'unknown language falls back to German curriculum');
+  });
+  test('English AM/PM review follows all AM/PM drills and stays English-only', () => {
+    const deLevels = levelsForLanguage('de');
+    const enLevels = levelsForLanguage('en');
+    const idx = enLevels.findIndex(l => l.key === 'en-review-ampm');
+    ok(idx > 0, 'English AM/PM review exists');
+    ok(!deLevels.some(l => l.key === 'en-review-ampm'), 'German hides AM/PM review');
+    eq(enLevels[idx].review, true);
+    eq(enLevels[idx].modes.join(','), AMPM_MODES.join(','));
+    eq(enLevels[idx - 1].key, 'en-ampm-digital24');
+    for (const mode of AMPM_MODES) {
+      ok(enLevels.slice(0, idx).some(l => l.mode === mode), `${mode} appears before AM/PM review`);
+    }
   });
   test('LEVELS use stable string keys, all unique and non-empty', () => {
     const seen = new Set();
@@ -499,7 +640,7 @@ group('transitions between exercises', () => {
     }
   });
   test('makeQuestion matches the level-effective minuteSet', () => {
-    for (const level of LEVELS) {
+    for (const level of levelsForLanguage('de')) {
       const q = makeQuestion(level);
       ok(q.h >= 1 && q.h <= 12, `h in range (${level.title})`);
       const mins = effectiveMinutes(level);
@@ -507,6 +648,28 @@ group('transitions between exercises', () => {
       eq(q.parsed.fullWord, parseTime(q.h, q.m).fullWord, `parsed consistent (${level.title})`);
       if (level.hour24) ok(q.dh >= 12 && q.dh <= 23, `24h dh PM-only (${level.title})`);
     }
+  });
+  test('makeQuestion on English AM/PM levels stamps a 24h-backed question', () => {
+    const level = levelsForLanguage('en').find(l => l.mode === 'digital24-ampm');
+    ok(level, 'English 24h → AM/PM level exists');
+    const stream = [0, 6/12, 20/24]; // ignored h, :30, dh=20
+    let i = 0;
+    const q = makeQuestion(level, () => stream[i++] ?? 0, 'en');
+    eq(q.language, 'en');
+    eq(q.dh, 20);
+    eq(q.h, 8);
+    eq(q.m, 30);
+    eq(ampmTimeFromQ(q), '8:30 p.m.');
+  });
+  test('makeQuestion stamps the requested language on word rendering', () => {
+    const level = { mode: 'wort-lesen', minuteSet: 'fuenf', hour24: false };
+    const stream = [10/12, 5/8]; // 11:40
+    let i = 0;
+    const q = makeQuestion(level, () => stream[i++] ?? 0, 'en');
+    eq(q.h, 11);
+    eq(q.m, 40);
+    eq(q.language, 'en');
+    eq(q.parsed.fullWord, 'twenty to twelve');
   });
   test('24h levels are PM-only — dh lands in 12..23 over many draws', () => {
     const level = LEVELS.find(l => l.hour24);
@@ -543,8 +706,8 @@ group('transitions between exercises', () => {
 });
 
 group('review levels', () => {
-  test('there are exactly three — after halbe, after viertel, after fuenf', () => {
-    const reviews = LEVELS.filter(l => l.review);
+  test('there are exactly three core reviews — after halbe, after viertel, after fuenf', () => {
+    const reviews = LEVELS.filter(l => l.review && !l.languages);
     eq(reviews.length, 3, `got ${reviews.length} review levels`);
     eq(reviews.map(r => r.key).join(','),
        'review-after-halbe,review-after-viertel,review-after-fuenf');
@@ -586,12 +749,25 @@ group('review levels', () => {
         `${key} should be preceded by a translation drill, got ${prev.key}`);
     }
   });
-  test('review levels declare all six modes, no single scalar mode', () => {
+  test('review levels declare the expected mode set, no single scalar mode', () => {
     for (const r of LEVELS.filter(l => l.review)) {
       ok(!r.mode, `review level ${r.key} must not set .mode`);
-      eq(new Set(r.modes).size, ALL_MODES.length);
-      for (const m of ALL_MODES) ok(r.modes.includes(m), `review ${r.key} missing ${m}`);
+      const expected = r.languages && r.languages.includes('en') ? AMPM_MODES : CORE_MODES;
+      eq(new Set(r.modes).size, expected.length);
+      for (const m of expected) ok(r.modes.includes(m), `review ${r.key} missing ${m}`);
     }
+  });
+  test('makeQuestion on the AM/PM review mixes all AM/PM modes', () => {
+    const review = LEVELS.find(l => l.key === 'en-review-ampm');
+    ok(review, 'AM/PM review exists');
+    const seen = new Set();
+    for (let i = 0; i < 500; i++) {
+      const q = makeQuestion(review, Math.random, 'en');
+      ok(review.modes.includes(q.mode), `q.mode=${q.mode} not in AM/PM review`);
+      ok(q.dh >= 0 && q.dh <= 23, `absolute hour in range dh=${q.dh}`);
+      seen.add(q.mode);
+    }
+    eq(seen.size, AMPM_MODES.length, `only saw modes: ${[...seen].join(',')}`);
   });
   test('makeQuestion on a review level picks a mode from the level list', () => {
     const review = LEVELS.find(l => l.review);
@@ -603,7 +779,7 @@ group('review levels', () => {
     }
     // With 400 draws over 6 modes, all should appear (digital↔word are
     // suppressed on minute=0, but the review draws non-volle minutes too).
-    eq(seen.size, ALL_MODES.length, `only saw modes: ${[...seen].join(',')}`);
+    eq(seen.size, CORE_MODES.length, `only saw modes: ${[...seen].join(',')}`);
   });
   test('makeQuestion on a review level distributes minutes across the union', () => {
     const review = LEVELS.find(l => l.review && l.minuteSets.includes('fuenf'));
@@ -650,12 +826,27 @@ group('localStorage persistence', () => {
     saveMastery(m);
     eq(loadMastery(), m);
   });
-  test('resetMastery clears both MASTERY_KEY and LEVEL_KEY', () => {
-    localStorage.setItem(MASTERY_KEY, JSON.stringify({ 'lesen-volle': { tier: 1, best: 8, last: 8 } }));
+  test('saveMastery / loadMastery stay language-scoped', () => {
+    resetMastery();
+    const de = recordMastery({}, 'lesen-volle', 10);
+    const en = recordMastery({}, 'lesen-volle', 8);
+    saveMastery(de, 'de');
+    saveMastery(en, 'en');
+    eq(loadMastery('de')['lesen-volle'].tier, 3);
+    eq(loadMastery('en')['lesen-volle'].tier, 1);
+    eq(loadAllMastery().de['lesen-volle'].tier, 3);
+    eq(loadAllMastery().en['lesen-volle'].tier, 1);
+  });
+  test('resetMastery clears mastery and per-language level keys', () => {
+    localStorage.setItem(MASTERY_KEY, JSON.stringify({ de: { 'lesen-volle': { tier: 1, best: 8, last: 8 } } }));
     localStorage.setItem(LEVEL_KEY, 'stellen-halbe');
+    localStorage.setItem(levelStorageKey('de'), 'stellen-halbe');
+    localStorage.setItem(levelStorageKey('en'), 'lesen-fuenf');
     resetMastery();
     eq(localStorage.getItem(MASTERY_KEY), null);
     eq(localStorage.getItem(LEVEL_KEY), null);
+    eq(localStorage.getItem(levelStorageKey('de')), null);
+    eq(localStorage.getItem(levelStorageKey('en')), null);
   });
   test('mastery keyed by stable level key is independent per level', () => {
     let m = {};
@@ -673,23 +864,31 @@ group('localStorage persistence', () => {
     eq(levelKeyFromStored(null), null);
     eq(levelKeyFromStored(''), null);
   });
+  test('levelStorageKey is language-aware and normalizes unknown languages', () => {
+    eq(levelStorageKey('de'), 'uhrzeit.level.de');
+    eq(levelStorageKey('en'), 'uhrzeit.level.en');
+    eq(levelStorageKey('fr'), 'uhrzeit.level.de');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────
-// MASTERY MIGRATION — chained v1 → v2 → v3
+// MASTERY MIGRATION — chained legacy formats → v4 language-aware storage
 //   v1: numeric ids, 18 levels (no reviews).
 //   v2: numeric ids, 20 levels (review levels inserted at 10 and 15).
 //   v3: stable string keys; digital↔word levels and a third review added.
+//   v4: language-scoped object keyed by language.
 // ─────────────────────────────────────────────────────────────
 group('mastery migration', () => {
   const V1_KEY = 'uhrzeit.mastery.v1';
   const V2_KEY = 'uhrzeit.mastery.v2';
+  const V3_KEY = 'uhrzeit.mastery.v3';
   const clearAll = () => {
     localStorage.removeItem(MASTERY_KEY);
     localStorage.removeItem(V1_KEY);
     localStorage.removeItem(V2_KEY);
+    localStorage.removeItem(V3_KEY);
   };
-  test('MASTERY_KEY is v3', () => eq(MASTERY_KEY, 'uhrzeit.mastery.v3'));
+  test('MASTERY_KEY is v4', () => eq(MASTERY_KEY, 'uhrzeit.mastery.v4'));
 
   test('migrateV2ToV3 maps every v2 numeric id to a known v3 stable key', () => {
     for (const [oldId, key] of Object.entries(V2_TO_V3)) {
@@ -698,7 +897,7 @@ group('mastery migration', () => {
     }
   });
 
-  test('v2 → v3: numeric ids translate to stable keys', () => {
+  test('v2 → v4: numeric ids translate to German stable keys', () => {
     clearAll();
     localStorage.setItem(V2_KEY, JSON.stringify({
       0:  { tier: 3, best: 10, last: 10 }, // → lesen-volle
@@ -710,10 +909,10 @@ group('mastery migration', () => {
     eq(loaded['review-after-viertel'].tier, 2);
     eq(loaded['stellen-minute'].tier, 1);
     eq(localStorage.getItem(V2_KEY), null, 'v2 cleared after migration');
-    eq(JSON.parse(localStorage.getItem(MASTERY_KEY))['lesen-volle'].tier, 3);
+    eq(JSON.parse(localStorage.getItem(MASTERY_KEY)).de['lesen-volle'].tier, 3);
   });
 
-  test('v1 → v2 → v3: chained migration preserves progress all the way', () => {
+  test('v1 → v2 → v4: chained migration preserves progress all the way', () => {
     clearAll();
     localStorage.setItem(V1_KEY, JSON.stringify({
       0:  { tier: 3, best: 10, last: 10 }, // v1 0 → v2 0  → lesen-volle
@@ -729,18 +928,62 @@ group('mastery migration', () => {
     eq(localStorage.getItem(V1_KEY), null, 'v1 cleared');
   });
 
-  test('v3 data wins over lingering v2 / v1 data', () => {
+  test('v3 → v4: stable-key data migrates into German progress', () => {
     clearAll();
-    localStorage.setItem(MASTERY_KEY, JSON.stringify({ 'lesen-halbe': { tier: 2, best: 9, last: 9 } }));
+    localStorage.setItem(V3_KEY, JSON.stringify({ 'lesen-halbe': { tier: 2, best: 9, last: 9 } }));
+    const loaded = loadMastery();
+    eq(loaded['lesen-halbe'].tier, 2, 'v3 value migrated');
+    eq(JSON.parse(localStorage.getItem(MASTERY_KEY)).de['lesen-halbe'].tier, 2);
+    eq(localStorage.getItem(V3_KEY), null, 'v3 cleared');
+  });
+
+  test('v4 data wins over lingering v3 / v2 / v1 data', () => {
+    clearAll();
+    localStorage.setItem(MASTERY_KEY, JSON.stringify({ en: { 'lesen-halbe': { tier: 2, best: 9, last: 9 } } }));
+    localStorage.setItem(V3_KEY, JSON.stringify({ 'lesen-volle': { tier: 3, best: 10, last: 10 } }));
     localStorage.setItem(V2_KEY, JSON.stringify({ 0: { tier: 3, best: 10, last: 10 } }));
     localStorage.setItem(V1_KEY, JSON.stringify({ 17: { tier: 3, best: 10, last: 10 } }));
-    const loaded = loadMastery();
-    eq(loaded['lesen-halbe'].tier, 2, 'v3 value preserved');
+    const loaded = loadMastery('en');
+    eq(loaded['lesen-halbe'].tier, 2, 'v4 value preserved');
     ok(loaded['lesen-volle'] === undefined, 'v2 not re-migrated when v3 exists');
     ok(loaded['stellen-minute'] === undefined, 'v1 not re-migrated when v3 exists');
+    ok(localStorage.getItem(V3_KEY) !== null, 'v3 preserved when v4 already present');
     ok(localStorage.getItem(V2_KEY) !== null, 'v2 preserved when v3 already present');
     ok(localStorage.getItem(V1_KEY) !== null, 'v1 preserved when v3 already present');
     clearAll();
+  });
+});
+
+group('app UI language selector contract', () => {
+  test('index.html exposes a stable language selector hook', () => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', `index.html?cache=${Date.now()}`, false);
+    xhr.send();
+    eq(xhr.status, 200);
+    contains([xhr.responseText.includes('data-testid="language-picker"')], true,
+      'language picker test id');
+    contains([xhr.responseText.includes('data-lang={l.key}')], true,
+      'language option data-lang hook');
+    contains([xhr.responseText.includes('aria-label="Learning language"')], true,
+      'language picker aria label');
+    contains([xhr.responseText.includes('minWidth: 44')], true,
+      'language selector minimum tap width');
+    contains([xhr.responseText.includes('minHeight: 44')], true,
+      'language selector minimum tap height');
+  });
+  test('index.html uses the dynamic level progress row plan', () => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', `index.html?cache=${Date.now()}`, false);
+    xhr.send();
+    eq(xhr.status, 200);
+    contains([xhr.responseText.includes('levelTrackRowPlan(')], true,
+      'level progress bar delegates row count to layout helper');
+    contains([xhr.responseText.includes('progressPathD')], true,
+      'level progress bar draws fill to the current level path');
+    ok(!xhr.responseText.includes('const rowY = [24, 24 + rowSpacing]'),
+      'level progress bar should not hard-code exactly two rows');
+    ok(!xhr.responseText.includes('strokeDashoffset={1 - levelProgress}'),
+      'level progress fill should not use proportional path dash offset');
   });
 });
 

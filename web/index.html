@@ -112,7 +112,7 @@
 <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
-<script src="engine.js"></script>
+<script src="engine.js?v=language-v5"></script>
 
 <script type="text/babel" data-presets="react">
 // ============================================================
@@ -297,32 +297,167 @@ function ThemePicker({ id, resolvedId, setId, T }) {
   </div>;
 }
 
+const UI_TEXT = {
+  de: {
+    languageLabel: 'Lernsprache',
+    setClock: 'Stelle die Uhr auf',
+    askTime: 'Wie spät ist es?',
+    askPhrase: 'Welcher Satz passt?',
+    askAmPm: 'Welche AM/PM-Zeit passt?',
+    askDaypart: 'Welche Tageszeit passt?',
+    ask24h: 'Welche 24h-Zeit passt?',
+    correctAnswer: 'Richtig',
+    roundComplete: 'Runde abgeschlossen',
+    again: 'Nochmal',
+    next: 'Weiter',
+    reset: 'Fortschritt zurücksetzen',
+    confirmReset: 'Tippe zur Bestätigung',
+    complete: [
+      'Versuch es noch einmal.',
+      'Gut gemacht, ein erster Spross.',
+      'Fast perfekt — eine Blüte!',
+      'Perfekt! Ein Löwenzahn für dich.',
+    ],
+    praise: ["Genau.","Richtig.","Perfekt.","Sehr schön.","Stimmt."],
+  },
+  en: {
+    languageLabel: 'Learning language',
+    setClock: 'Set the clock to',
+    askTime: 'What time is it?',
+    askPhrase: 'Which phrase matches?',
+    askAmPm: 'Which AM/PM time matches?',
+    askDaypart: 'Which daypart matches?',
+    ask24h: 'Which 24h time matches?',
+    correctAnswer: 'Correct',
+    roundComplete: 'Round complete',
+    again: 'Again',
+    next: 'Next',
+    reset: 'Reset progress',
+    confirmReset: 'Tap to confirm',
+    complete: [
+      'Try once more.',
+      'Nice work, a first sprout.',
+      'Almost perfect — a blossom!',
+      'Perfect! A dandelion for you.',
+    ],
+    praise: ["Exactly.","Correct.","Perfect.","Very nice.","That's it."],
+  },
+};
+function uiText(language) { return UI_TEXT[normalizeLanguage(language)] || UI_TEXT.de; }
+
+const EN_LEVEL_COPY = {
+  "lesen-volle": ["Full hours", "Read the clock · :00"],
+  "stellen-volle": ["Set full hours", "Set the clock · :00"],
+  "lesen-halbe": ["Half hours", "Read the clock · :30"],
+  "wort-lesen-halbe": ["Half-hour words", "Which phrase matches?"],
+  "wort-stellen-halbe": ["Set half-hour words", "Phrase to clock"],
+  "stellen-halbe": ["Set half hours", "Set the clock · :30"],
+  "wort-digital-halbe": ["Half hours · find the time", 'What time is "half past three"?'],
+  "digital-wort-halbe": ["Half hours · find the phrase", "What is 3:30 called?"],
+  "review-after-halbe": ["Review · through half hours", "Everything learned so far"],
+  "lesen-viertel": ["Quarter hours", "Read the clock · :15, :45"],
+  "wort-lesen-viertel": ["Quarter-hour words", "Which phrase matches?"],
+  "wort-stellen-viertel": ["Set quarter-hour words", "Phrase to clock"],
+  "stellen-viertel": ["Set quarter hours", "Set the clock · :15, :45"],
+  "wort-digital-viertel": ["Quarter hours · find the time", 'What time is "quarter to seven"?'],
+  "digital-wort-viertel": ["Quarter hours · find the phrase", "What is 6:45 called?"],
+  "review-after-viertel": ["Review · through quarter hours", "Everything learned so far"],
+  "lesen-fuenf": ["5-minute times", "Read the clock · every 5 minutes"],
+  "wort-lesen-fuenf": ["5-minute words", "Which phrase matches?"],
+  "wort-stellen-fuenf": ["Set 5-minute words", "Phrase to clock"],
+  "stellen-fuenf": ["Set 5-minute times", "Set the clock · every 5 minutes"],
+  "wort-digital-fuenf": ["5-minute words · find the time", 'What time is "twenty-five to five"?'],
+  "digital-wort-fuenf": ["5-minute times · find the phrase", "What is 4:25 called?"],
+  "review-after-fuenf": ["Review · through 5-minute times", "Everything learned so far"],
+  "lesen-fuenf-24h": ["24-hour times", "Read the clock · 24h"],
+  "stellen-fuenf-24h": ["Set 24-hour times", "Set the clock · 24h"],
+  "en-daypart-ampm": ["Dayparts to AM/PM", "Morning, noon, night → a.m./p.m."],
+  "en-ampm-daypart": ["AM/PM to dayparts", "a.m./p.m. → morning, evening, night"],
+  "en-digital24-ampm": ["24h to AM/PM", "20:30 → 8:30 p.m."],
+  "en-ampm-digital24": ["AM/PM to 24h", "8:30 p.m. → 20:30"],
+  "en-review-ampm": ["Review · AM/PM", "Dayparts and 24h mixed"],
+  "lesen-minute": ["Minute precision", "Read the clock · every minute"],
+  "stellen-minute": ["Set minute precision", "Set the clock · every minute"],
+};
+function levelCopy(level, language) {
+  if (normalizeLanguage(language) !== 'en') return { title: level.title, sub: level.sub };
+  const copy = EN_LEVEL_COPY[level.key];
+  return copy ? { title: copy[0], sub: copy[1] } : { title: level.title, sub: level.sub };
+}
+
+function useLanguage() {
+  const [language, setLanguageState] = React.useState(() => {
+    try {
+      const fromUrl = new URLSearchParams(window.location.search).get('lang');
+      return normalizeLanguage(fromUrl || localStorage.getItem(LANGUAGE_KEY));
+    } catch { return DEFAULT_LANGUAGE; }
+  });
+  const setLanguage = (next) => {
+    const lang = normalizeLanguage(next);
+    setLanguageState(lang);
+    try { localStorage.setItem(LANGUAGE_KEY, lang); } catch {}
+  };
+  React.useEffect(() => {
+    try { localStorage.setItem(LANGUAGE_KEY, language); } catch {}
+  }, [language]);
+  return { language, setLanguage };
+}
+
+function LanguagePicker({ language, setLanguage, T }) {
+  return <div data-testid="language-picker" role="tablist" aria-label="Learning language"
+    style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+    {LANGUAGES.map(l => {
+      const active = language === l.key;
+      return <button key={l.key} role="tab" data-lang={l.key}
+        aria-label={l.label} aria-selected={active} title={l.label}
+        onClick={(e) => { e.stopPropagation(); setLanguage(l.key); }}
+        style={{
+          minWidth: 44, minHeight: 44, padding: '0 10px',
+          borderRadius: 999, border: active ? `1px solid ${T.ink}` : '1px solid rgba(0,0,0,0.14)',
+          background: active ? T.ink : 'rgba(255,255,255,0.35)',
+          color: active ? T.enamel : T.ink,
+          fontFamily: 'JetBrains Mono, monospace', fontSize: 10, fontWeight: 700,
+          letterSpacing: '0.06em', cursor: 'pointer',
+          boxShadow: active ? '0 1px 3px rgba(0,0,0,0.18)' : 'inset 0 1px 0 rgba(255,255,255,0.35)',
+        }}>
+        {l.shortLabel}
+      </button>;
+    })}
+  </div>;
+}
+
 // ============================================================
 // MASTERY HOOK — wraps engine.js mastery helpers with React state
 // ============================================================
-function useMastery() {
-  const [m, setM] = React.useState(() => loadMastery());
+function useMastery(language) {
+  const [all, setAll] = React.useState(() => loadAllMastery());
+  const lang = normalizeLanguage(language);
+  const mastery = all[lang] || {};
   // Mastery is keyed by the level's stable string key (see engine.js
   // V2_TO_V3 and the §Storage section in README), but the rest of the app
   // navigates by numeric levelId. Translate at the boundary.
-  const record = (levelId, correct) => {
-    setM(prev => {
-      const next = recordMastery(prev, LEVELS[levelId].key, correct);
-      saveMastery(next);
+  const record = (levelKey, correct) => {
+    setAll(prev => {
+      const next = {
+        ...prev,
+        [lang]: recordMastery(prev[lang] || {}, levelKey, correct),
+      };
+      saveAllMastery(next);
       return next;
     });
   };
-  const reset = () => { resetMastery(); setM({}); };
-  return { mastery: m, record, reset };
+  const reset = () => { resetMastery(); setAll(loadAllMastery()); };
+  return { mastery, record, reset };
 }
 
 // ============================================================
 // GAME HOOK — question lifecycle, round state, scoring
 // ============================================================
-function useClockGame({ levelId = 0, roundN = 10, onMilestone, onRoundDone } = {}) {
+function useClockGame({ levelId = 0, levels = LEVELS, language = DEFAULT_LANGUAGE, roundN = 10, onMilestone, onRoundDone } = {}) {
   const [, setTick] = React.useState(0);
   const refresh = () => setTick(t => t + 1);
-  const level = LEVELS[levelId];
+  const level = levels[levelId] || levels[0] || LEVELS[0];
+  const lang = normalizeLanguage(language);
 
   const ref = React.useRef(null);
   if (!ref.current) ref.current = {
@@ -333,24 +468,18 @@ function useClockGame({ levelId = 0, roundN = 10, onMilestone, onRoundDone } = {
     levelId, roundN,
   };
   const S = ref.current;
-  S.levelId = levelId; S.roundN = roundN; S.level = level;
+  S.levelId = levelId; S.roundN = roundN; S.level = level; S.language = lang;
+  const ui = uiText(lang);
 
   // Review levels pick a mode per draw, so these predicates must key off the
   // *current question*, not the level. Plain levels pre-stamp q.mode anyway.
   const qMode = () => S.question?.mode || level.mode;
-  // Whether either side of the current question involves words (used to
-  // suppress the "· 24h" annotation on word-prompt levels and to choose the
-  // "Richtig: …" feedback format).
-  const isWord = () => {
-    const v = modeView(qMode());
-    return !!(v && (v.promptKind === 'word' || v.answerKind === 'word'));
-  };
   // Modes where the user manipulates the clock hands (vs picks an option).
   const isSet  = () => modeView(qMode())?.answerKind === 'clock';
 
   const newQuestion = () => {
     clearTimeout(S.autoSubmitTimer); S.autoSubmitTimer = null;
-    S.question = makeQuestion(level);
+    S.question = makeQuestion(level, Math.random, lang);
     S.selected = null; S.locked = false;
     S.feedback = null; S.feedbackKind = null;
     const view = modeView(S.question.mode);
@@ -358,8 +487,11 @@ function useClockGame({ levelId = 0, roundN = 10, onMilestone, onRoundDone } = {
       S.setH = 12; S.setM = 0; S.activeHand = "minute";
     }
     // Option-pickers: the option builder matches the answer modality.
-    if (view?.answerKind === 'digital') Object.assign(S, buildDigitalOptions(S.question, level));
-    if (view?.answerKind === 'word')    Object.assign(S, buildWordOptions(S.question, level));
+    if (view?.answerKind === 'digital')     Object.assign(S, buildDigitalOptions(S.question, level));
+    if (view?.answerKind === 'word')        Object.assign(S, buildWordOptions(S.question, level, lang));
+    if (view?.answerKind === 'ampmTime')    Object.assign(S, buildAmpmOptions(S.question, level));
+    if (view?.answerKind === 'daypartTime') Object.assign(S, buildDaypartOptions(S.question, level));
+    if (view?.answerKind === 'digital24')   Object.assign(S, buildDigital24Options(S.question, level));
     refresh();
   };
 
@@ -373,20 +505,22 @@ function useClockGame({ levelId = 0, roundN = 10, onMilestone, onRoundDone } = {
   React.useEffect(() => {
     if (firstRun.current) { firstRun.current = false; return; }
     startRound();
-  }, [levelId]);
+  }, [levelId, lang]);
 
   const finishQuestion = (ok) => {
     S.locked = true; S.wasCorrect = ok;
     if (ok) {
       S.streak += 1;
       S.score += 10 + Math.min(10, S.streak);
-      S.feedback = pickRandom(["Genau.","Richtig.","Perfekt.","Sehr schön.","Stimmt."]);
+      S.feedback = pickRandom(ui.praise);
       S.feedbackKind = "correct";
     } else {
       S.streak = 0;
-      S.feedback = isWord()
-        ? `Richtig: ${wordFromQ(S.question)}.`
-        : `Richtig: ${digitalFromQ(S.question)}.`;
+      const view = modeView(qMode());
+      const correctText = view.answerKind === 'clock'
+        ? textFromQ(S.question, view.promptKind, lang)
+        : textFromQ(S.question, view.answerKind, lang);
+      S.feedback = `${ui.correctAnswer}: ${correctText}.`;
       S.feedbackKind = "wrong";
       if (isSet()) { S.setH = S.question.h; S.setM = S.question.m; }
     }
@@ -405,7 +539,7 @@ function useClockGame({ levelId = 0, roundN = 10, onMilestone, onRoundDone } = {
     if (S.round.length >= S.roundN) {
       S.complete = true;
       const correctCount = S.round.filter(Boolean).length;
-      onRoundDone && onRoundDone(levelId, correctCount);
+      onRoundDone && onRoundDone(level.key, correctCount);
       refresh();
       return;
     }
@@ -417,8 +551,7 @@ function useClockGame({ levelId = 0, roundN = 10, onMilestone, onRoundDone } = {
     if (S.locked) return;
     S.selected = val;
     refresh();
-    const correct = modeView(qMode())?.answerKind === 'word'
-      ? wordFromQ(S.question) : digitalFromQ(S.question);
+    const correct = textFromQ(S.question, modeView(qMode())?.answerKind, lang);
     finishQuestion(val === correct);
   };
 
@@ -863,10 +996,9 @@ function LevelIcon({ tier, active, accent, ink, paper, fillProgress = 0, review 
 // ============================================================
 // LEVEL TRACK
 // ============================================================
-function LevelTrack({ levelId, setLevelId, mastery, accent, ink, soft, trackBg, paper }) {
-  // Two-row snake: row 0 runs left→right, a U-turn on the right connects down,
-  // row 1 runs right→left. Keeps the stops at a comfortable gap even on a
-  // narrow phone, and the curve gives a clear sense of progression.
+function LevelTrack({ levels = LEVELS, levelId, setLevelId, mastery, accent, ink, soft, trackBg, paper, language }) {
+  // Multi-row snake: each row alternates direction and a U-turn connects down
+  // when the visible curriculum would otherwise crowd the stops.
   const hostRef = React.useRef(null);
   const [width, setWidth] = React.useState(0);
   React.useLayoutEffect(() => {
@@ -878,44 +1010,63 @@ function LevelTrack({ levelId, setLevelId, mastery, accent, ink, soft, trackBg, 
     return () => ro.disconnect();
   }, []);
 
-  const N = LEVELS.length;
-  const perRow = Math.ceil(N / 2);
-  const inset = 20;
+  const N = levels.length;
+  const plan = levelTrackRowPlan(N, width);
+  const { perRow, rowCount, inset, rowSpacing } = plan;
   const innerW = Math.max(0, width - inset * 2);
   const gap = perRow > 1 ? innerW / (perRow - 1) : 0;
-  const rowSpacing = 44;
-  const rowY = [24, 24 + rowSpacing];
-  const height = rowY[1] + 24;
+  const rowY = Array.from({ length: rowCount }, (_, i) => 24 + i * rowSpacing);
+  const height = (rowY[rowY.length - 1] || 24) + 24;
+  const xRight = inset + (perRow - 1) * gap;
 
   const posOf = (i) => {
     const row = Math.floor(i / perRow);
     const col = i % perRow;
-    const x = row === 0
+    const x = row % 2 === 0
       ? inset + col * gap
       : inset + (perRow - 1 - col) * gap;
     return { x, y: rowY[row] };
   };
 
-  // Snake path: row-0 line → U-turn arc on the right → row-1 line.
-  const xRight = inset + (perRow - 1) * gap;
-  const pathD = width <= 0 ? '' : [
-    `M ${inset} ${rowY[0]}`,
-    `L ${xRight} ${rowY[0]}`,
-    `A ${rowSpacing / 2} ${rowSpacing / 2} 0 0 1 ${xRight} ${rowY[1]}`,
-    `L ${inset} ${rowY[1]}`,
-  ].join(' ');
+  const pathD = width <= 0 || rowCount === 0 ? '' : (() => {
+    const finalRow = Math.floor((N - 1) / perRow);
+    const finalPos = posOf(N - 1);
+    const parts = [`M ${inset} ${rowY[0]}`];
+    for (let row = 0; row < rowCount; row++) {
+      const forward = row % 2 === 0;
+      const rowEnd = row === finalRow ? finalPos.x : (forward ? xRight : inset);
+      parts.push(`L ${rowEnd} ${rowY[row]}`);
+      if (row < rowCount - 1) {
+        const r = rowSpacing / 2;
+        const sweep = forward ? 1 : 0;
+        parts.push(`A ${r} ${r} 0 0 ${sweep} ${rowEnd} ${rowY[row + 1]}`);
+      }
+    }
+    return parts.join(' ');
+  })();
 
-  // Normalised progress along the path: row-0 segments carry half the length,
-  // row-1 segments the other half, and the arc eats a small slice so the
-  // accent fill reads as "I'm on this stop". Cheap enough to eyeball.
-  const totalSegments = (perRow - 1) * 2 + 1;
-  const levelProgress = Math.min(1, Math.max(0,
-    levelId < perRow
-      ? levelId / totalSegments
-      : ((perRow - 1) + 1 + (levelId - perRow)) / totalSegments
-  ));
+  const progressPathD = width <= 0 || rowCount === 0 ? '' : (() => {
+    const target = Math.max(0, Math.min(N - 1, levelId));
+    const targetRow = Math.floor(target / perRow);
+    const targetPos = posOf(target);
+    const parts = [`M ${inset} ${rowY[0]}`];
+    for (let row = 0; row <= targetRow; row++) {
+      const forward = row % 2 === 0;
+      if (row === targetRow) {
+        parts.push(`L ${targetPos.x} ${targetPos.y}`);
+      } else {
+        const rowEnd = forward ? xRight : inset;
+        parts.push(`L ${rowEnd} ${rowY[row]}`);
+        const r = rowSpacing / 2;
+        const sweep = forward ? 1 : 0;
+        parts.push(`A ${r} ${r} 0 0 ${sweep} ${rowEnd} ${rowY[row + 1]}`);
+      }
+    }
+    return parts.join(' ');
+  })();
 
-  const current = LEVELS[levelId];
+  const current = levels[levelId] || levels[0];
+  const currentCopy = levelCopy(current, language);
   const curMastery = mastery[current.key];
 
   return (
@@ -923,12 +1074,12 @@ function LevelTrack({ levelId, setLevelId, mastery, accent, ink, soft, trackBg, 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
         fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.18em',
         textTransform: 'uppercase', color: soft, marginBottom: 6 }}>
-        <span>Level {String(levelId+1).padStart(2,'0')} / {LEVELS.length}</span>
+        <span>Level {String(levelId+1).padStart(2,'0')} / {levels.length}</span>
         <span>{curMastery ? `${curMastery.best}/10${curMastery.tier === 3 ? ' 🌼' : ''}` : '—'}</span>
       </div>
       <div style={{ fontFamily: 'Nunito, sans-serif', fontWeight: 700, fontSize: 16,
         color: ink, letterSpacing: '-0.01em', marginTop: 2 }}>
-        {current.title}
+        {currentCopy.title}
       </div>
 
       <div ref={hostRef}
@@ -938,13 +1089,11 @@ function LevelTrack({ levelId, setLevelId, mastery, accent, ink, soft, trackBg, 
             style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
             <path d={pathD} fill="none" stroke={trackBg || `${ink}2b`} strokeWidth="2"
               strokeLinecap="round" />
-            <path d={pathD} fill="none" stroke={accent} strokeWidth="2"
-              strokeLinecap="round" pathLength="1"
-              strokeDasharray="1" strokeDashoffset={1 - levelProgress}
-              style={{ transition: 'stroke-dashoffset .25s' }} />
+            <path d={progressPathD} fill="none" stroke={accent} strokeWidth="2"
+              strokeLinecap="round" />
           </svg>
         )}
-        {width > 0 && LEVELS.map((lv, i) => {
+        {width > 0 && levels.map((lv, i) => {
           const { x, y } = posOf(i);
           const rec = mastery[lv.key];
           const tier = rec?.tier ?? 0;
@@ -984,12 +1133,13 @@ function Feedback({ c, S }) {
   }}>{show ? S.feedback : '—'}</div>;
 }
 
-function NextBtn({ onClick, c, font, accent }) {
+function NextBtn({ onClick, c, font, accent, language = DEFAULT_LANGUAGE }) {
+  const ui = uiText(language);
   return <button onClick={onClick}
     style={{ width: '100%', fontFamily: font, fontWeight: 600, fontSize: 16, minHeight: 50,
       padding: '12px', borderRadius: 999, border: 0,
       background: accent, color: c.paper, cursor: 'pointer', marginTop: 8 }}>
-    Weiter →
+    {ui.next} →
   </button>;
 }
 
@@ -1050,6 +1200,8 @@ function useClockSize() {
 function Body({ S, actions, level, c, theme, font, labelFont, accent }) {
   if (!S.question) return null;
   const { h, m } = S.question;
+  const lang = normalizeLanguage(S.language);
+  const ui = uiText(lang);
   const clockSize = useClockSize();
   // Review levels roll a new mode per question, so Body reads it off the
   // question, not the level. Plain levels stamp the level's mode on the
@@ -1062,8 +1214,8 @@ function Body({ S, actions, level, c, theme, font, labelFont, accent }) {
   const isRead = view.promptKind === 'clock' && view.answerKind !== 'clock';
   const isWord = view.promptKind === 'word' || view.answerKind === 'word';
   const noClock = !view.showClock;
-  const showDigitalPrompt = view.promptKind === 'digital';
-  const showWordPrompt    = view.promptKind === 'word';
+  const showTextPrompt = view.promptKind !== 'clock';
+  const promptValue = showTextPrompt ? textFromQ(S.question, view.promptKind, lang) : '';
 
   // Prompt slot — fixed min-height so the clock sits at the same Y in every
   // mode. Content is flex-end-aligned: modes with only a small label leave
@@ -1073,9 +1225,18 @@ function Body({ S, actions, level, c, theme, font, labelFont, accent }) {
   // the mode's answer modality so a future renamed/added mode picks up the
   // right label automatically.
   const labelText =
-    view.answerKind === 'clock'   ? `Stelle die Uhr auf${!isWord && level.hour24 ? ' · 24h' : ''}` :
-    view.answerKind === 'digital' ? `Wie spät ist es?${level.hour24 ? ' · 24h' : ''}` :
-    /* answerKind === 'word' */     'Welcher Satz passt?';
+    view.answerKind === 'clock'   ? `${ui.setClock}${!isWord && level.hour24 ? ' · 24h' : ''}` :
+    view.answerKind === 'digital' ? `${ui.askTime}${level.hour24 ? ' · 24h' : ''}` :
+    view.answerKind === 'word'    ? ui.askPhrase :
+    view.answerKind === 'ampmTime' ? ui.askAmPm :
+    view.answerKind === 'daypartTime' ? ui.askDaypart :
+    view.answerKind === 'digital24' ? ui.ask24h :
+    ui.askTime;
+  const promptIsCompactPhrase = view.promptKind === 'word' || view.promptKind === 'daypartTime';
+  const promptFontSize =
+    promptIsCompactPhrase ? 28 :
+    view.promptKind === 'ampmTime' ? 52 :
+    64;
 
   const prompt = (
     <div style={{
@@ -1087,16 +1248,13 @@ function Body({ S, actions, level, c, theme, font, labelFont, accent }) {
         letterSpacing: '0.22em', textTransform: 'uppercase', color: c.soft }}>
         {labelText}
       </div>
-      {showDigitalPrompt && (
-        <div style={{ fontFamily: font, fontWeight: 600, fontSize: 64,
-          color: accent, letterSpacing: '-0.03em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
-          {digitalFromQ(S.question)}
-        </div>
-      )}
-      {showWordPrompt && (
-        <div style={{ fontFamily: font, fontWeight: 600, fontSize: 28,
-          color: accent, letterSpacing: '-0.015em', lineHeight: 1.15, padding: '0 6px' }}>
-          {wordFromQ(S.question)}
+      {showTextPrompt && (
+        <div style={{ fontFamily: font, fontWeight: 600, fontSize: promptFontSize,
+          color: accent, letterSpacing: promptIsCompactPhrase ? '-0.015em' : '-0.03em',
+          lineHeight: promptIsCompactPhrase ? 1.15 : 1,
+          padding: promptIsCompactPhrase ? '0 6px' : 0,
+          fontVariantNumeric: 'tabular-nums' }}>
+          {promptValue}
         </div>
       )}
     </div>
@@ -1153,11 +1311,11 @@ function Body({ S, actions, level, c, theme, font, labelFont, accent }) {
   // Option-picker modes: the answer side is either a digital time or a
   // phrase. Layout follows the answer modality — phrase options sit in a
   // single-column row stack; digital options in a 2-col pill grid.
-  const wordOptions = view.answerKind === 'word';
+  const rowOptions = view.answerKind === 'word' || view.answerKind === 'daypartTime';
   const showOptions = view.pickOption;
 
   if (showOptions) {
-    const correct = wordOptions ? wordFromQ(S.question) : digitalFromQ(S.question);
+    const correct = textFromQ(S.question, view.answerKind, lang);
     const stOf = (v) => !S.locked ? (S.selected === v ? 'selected' : '')
                         : v === correct ? 'correct' : v === S.selected ? 'wrong' : 'faded';
     return (
@@ -1166,13 +1324,13 @@ function Body({ S, actions, level, c, theme, font, labelFont, accent }) {
         {!noClock && clockBlock}
         <div data-testid="options" style={{
           display: 'grid',
-          gridTemplateColumns: wordOptions ? '1fr' : '1fr 1fr',
-          gap: wordOptions ? 8 : 10,
+          gridTemplateColumns: rowOptions ? '1fr' : '1fr 1fr',
+          gap: rowOptions ? 8 : 10,
           marginTop: noClock ? 18 : 0,
         }}>
           {S.options.map(o =>
             <button key={o} onClick={() => actions.pickOption(o)}
-              style={optionButtonStyle(stOf(o), c, font, wordOptions ? 'row' : 'pill')}>{o}</button>
+              style={optionButtonStyle(stOf(o), c, font, rowOptions ? 'row' : 'pill')}>{o}</button>
           )}
         </div>
         <Feedback c={c} S={S} />
@@ -1191,15 +1349,13 @@ function Body({ S, actions, level, c, theme, font, labelFont, accent }) {
   );
 }
 
-function RoundComplete({ c, accent, font, correct, tier, onAgain, onNext, hasNext }) {
-  const msg = tier === 3 ? 'Perfekt! Ein Löwenzahn für dich.' :
-              tier === 2 ? 'Fast perfekt — eine Blüte!' :
-              tier === 1 ? 'Gut gemacht, ein erster Spross.' :
-              'Versuch es noch einmal.';
+function RoundComplete({ c, accent, font, correct, tier, onAgain, onNext, hasNext, language = DEFAULT_LANGUAGE }) {
+  const ui = uiText(language);
+  const msg = ui.complete[tier] || ui.complete[0];
   return <div style={{ textAlign: 'center', padding: '30px 0 16px' }}>
     <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10,
       letterSpacing: '0.22em', textTransform: 'uppercase', color: c.soft }}>
-      Runde abgeschlossen
+      {ui.roundComplete}
     </div>
     <div style={{ fontFamily: font, fontWeight: 700, fontSize: 56, color: accent,
       marginTop: 4, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
@@ -1218,12 +1374,12 @@ function RoundComplete({ c, accent, font, correct, tier, onAgain, onNext, hasNex
           background: c.glass.fill, color: c.ink, cursor: 'pointer',
           boxShadow: `inset 0 1px 0 ${c.glass.shine}, 0 1px 2px rgba(0,0,0,0.08), 0 6px 14px -6px rgba(0,0,0,0.12)`,
           backdropFilter: 'blur(8px) saturate(140%)',
-          WebkitBackdropFilter: 'blur(8px) saturate(140%)' }}>Nochmal</button>
+          WebkitBackdropFilter: 'blur(8px) saturate(140%)' }}>{ui.again}</button>
       {hasNext && <button onClick={onNext}
         style={{ fontFamily: font, fontWeight: 600, fontSize: 15,
           padding: '11px 22px', borderRadius: 999, border: 0,
           background: accent, color: '#fff', cursor: 'pointer',
-          boxShadow: `inset 0 1px 0 rgba(255,255,255,0.3), 0 2px 6px rgba(0,0,0,0.2), 0 8px 18px -6px rgba(0,0,0,0.25)` }}>Weiter →</button>}
+          boxShadow: `inset 0 1px 0 rgba(255,255,255,0.3), 0 2px 6px rgba(0,0,0,0.2), 0 8px 18px -6px rgba(0,0,0,0.25)` }}>{ui.next} →</button>}
     </div>
   </div>;
 }
@@ -1245,7 +1401,8 @@ function Celebrate({ c }) {
 // ============================================================
 // RESET ICON — small top-right button, two-step confirm
 // ============================================================
-function ResetIcon({ onReset, c, soft }) {
+function ResetIcon({ onReset, c, soft, language = DEFAULT_LANGUAGE }) {
+  const ui = uiText(language);
   const [armed, setArmed] = React.useState(false);
   React.useEffect(() => {
     if (!armed) return;
@@ -1257,8 +1414,8 @@ function ResetIcon({ onReset, c, soft }) {
     if (armed) { onReset(); setArmed(false); } else setArmed(true);
   };
   return <button onClick={handleClick}
-    aria-label={armed ? 'Tippe zur Bestätigung' : 'Fortschritt zurücksetzen'}
-    title={armed ? 'Tippe zur Bestätigung' : 'Fortschritt zurücksetzen'}
+    aria-label={armed ? ui.confirmReset : ui.reset}
+    title={armed ? ui.confirmReset : ui.reset}
     style={{
       width: 26, height: 26, padding: 0, flexShrink: 0,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -1378,29 +1535,49 @@ const isDebug = typeof window !== 'undefined' &&
   (/(^|[?&])debug=1(&|$)/.test(window.location.search) ||
    window.location.hash === '#debug');
 
+function storedLevelIdFor(language) {
+  try {
+    const lang = normalizeLanguage(language);
+    const levels = levelsForLanguage(lang);
+    const stored = localStorage.getItem(levelStorageKey(lang)) ||
+      (lang === 'de' ? localStorage.getItem(LEVEL_KEY) : null);
+    const key = levelKeyFromStored(stored);
+    const idx = key ? levels.findIndex(L => L.key === key) : 0;
+    return idx >= 0 ? idx : 0;
+  } catch { return 0; }
+}
+
 function UhrzeitApp() {
-  const { mastery, record, reset } = useMastery();
+  const { language, setLanguage } = useLanguage();
+  const { mastery, record, reset } = useMastery(language);
   const { id: themeId, resolvedId: resolvedThemeId, setId: setThemeId, T } = useTheme();
-  const [levelId, setLevelId] = React.useState(() => {
-    try {
-      const stored = localStorage.getItem(LEVEL_KEY);
-      const key = levelKeyFromStored(stored);
-      const idx = key ? LEVELS.findIndex(L => L.key === key) : 0;
-      return idx >= 0 ? idx : 0;
-    } catch { return 0; }
-  });
+  const [levelByLanguage, setLevelByLanguage] = React.useState(() =>
+    Object.fromEntries(LANGUAGES.map(l => [l.key, storedLevelIdFor(l.key)]))
+  );
+  const levels = levelsForLanguage(language);
+  const levelId = Math.min(levelByLanguage[language] ?? 0, levels.length - 1);
+  const setLevelId = (nextLevelId) => {
+    setLevelByLanguage(prev => {
+      const current = prev[language] ?? 0;
+      const raw = typeof nextLevelId === 'function' ? nextLevelId(current) : nextLevelId;
+      const visible = levelsForLanguage(language);
+      const next = Math.max(0, Math.min(visible.length - 1, raw));
+      try { localStorage.setItem(levelStorageKey(language), visible[next].key); } catch {}
+      return { ...prev, [language]: next };
+    });
+  };
   const [celeb, setCeleb] = React.useState(null);
 
   React.useEffect(() => {
-    try { localStorage.setItem(LEVEL_KEY, LEVELS[levelId].key); } catch {}
-  }, [levelId]);
+    try { localStorage.setItem(levelStorageKey(language), levels[levelId].key); } catch {}
+  }, [language, levelId]);
 
   const onMilestone = (s) => { setCeleb(s); setTimeout(() => setCeleb(null), 1600); };
-  const onRoundDone = (lv, correct) => record(lv, correct);
+  const onRoundDone = (levelKey, correct) => record(levelKey, correct);
 
-  const game = useClockGame({ levelId, onMilestone, onRoundDone });
+  const game = useClockGame({ levelId, levels, language, onMilestone, onRoundDone });
   const S = game.state;
-  const level = LEVELS[levelId];
+  const level = levels[levelId];
 
   const g = glassTokensFor(T);
   const c = {
@@ -1418,7 +1595,11 @@ function UhrzeitApp() {
     dark: !!T.dark,
   };
 
-  const handleReset = () => { reset(); setLevelId(0); game.actions.startRound(); };
+  const handleReset = () => {
+    reset();
+    setLevelByLanguage(Object.fromEntries(LANGUAGES.map(l => [l.key, 0])));
+    game.actions.startRound();
+  };
 
   const roundCorrect = S.round.filter(Boolean).length;
   const roundTier = masteryTier(roundCorrect);
@@ -1444,8 +1625,9 @@ function UhrzeitApp() {
           <NowLogo size={28} T={T} accent={accent} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span>{S.score} Pkt · <span style={{ color: accent }}>{S.streak}↑</span></span>
+            <LanguagePicker language={language} setLanguage={setLanguage} T={T} />
             <ThemePicker id={themeId} resolvedId={resolvedThemeId} setId={setThemeId} T={T} />
-            <ResetIcon onReset={handleReset} c={c} soft={c.soft} />
+            <ResetIcon onReset={handleReset} c={c} soft={c.soft} language={language} />
           </div>
         </div>
 
@@ -1458,17 +1640,18 @@ function UhrzeitApp() {
         </div>
 
         <div style={{ marginTop: 16 }}>
-          <LevelTrack levelId={levelId} setLevelId={setLevelId} mastery={mastery}
+          <LevelTrack levels={levels} levelId={levelId} setLevelId={setLevelId} mastery={mastery}
             accent={accent} ink={c.ink} soft={c.soft} paper={c.paper}
-            trackBg={T.dark ? `${c.ink}5a` : `${c.ink}2b`} />
+            trackBg={T.dark ? `${c.ink}5a` : `${c.ink}2b`} language={language} />
         </div>
 
         {S.complete ?
           <RoundComplete c={c} accent={accent} font="Nunito, sans-serif"
             correct={roundCorrect} tier={roundTier}
             onAgain={game.actions.startRound}
-            onNext={() => setLevelId(Math.min(LEVELS.length - 1, levelId + 1))}
-            hasNext={levelId < LEVELS.length - 1} /> :
+            onNext={() => setLevelId(Math.min(levels.length - 1, levelId + 1))}
+            hasNext={levelId < levels.length - 1}
+            language={language} /> :
           <Body S={S} actions={game.actions} level={level} c={c} theme={theme}
             accent={accent} font="Nunito, sans-serif" labelFont="JetBrains Mono" />}
 

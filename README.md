@@ -1,11 +1,11 @@
 # Uhrzeit Lernen
 
-A small, zero-install German clock-reading game with a progressive curriculum
-from full hours through finer-grained clock reading, growing a dandelion on
-each level you master. Each learning level focuses on the *new* minute
-positions for its tier; review levels mix the available modes across
-everything learned so far. Two color themes (Koralle / Abend) with an Auto
-swatch that follows `prefers-color-scheme`.
+A small, zero-install clock-reading game with German and English practice and
+a progressive curriculum from full hours through finer-grained clock reading,
+growing a dandelion on each level you master. Each learning level focuses on
+the *new* minute positions for its tier; review levels mix the available modes
+across everything learned so far. Two color themes (Koralle / Abend) with an
+Auto swatch that follows `prefers-color-scheme`.
 
 ## Run it
 
@@ -19,9 +19,10 @@ python3 -m http.server 8765 --directory web
 # then open http://localhost:8765/index.html
 ```
 
-State (current level + mastery per level) is kept in `localStorage`. The
-reset control clears it with a two-step confirmation: the first tap arms the
-reset, and a second tap within a short confirmation window commits it.
+State (current language, current level, and mastery per level) is kept in
+`localStorage`. Progress is scoped by language. The reset control clears it
+with a two-step confirmation: the first tap arms the reset, and a second tap
+within a short confirmation window commits it.
 
 ## Files
 
@@ -65,14 +66,15 @@ transparency, the colour constants for theme.
 | --- | --- | --- |
 | `lesen` | Clock face | Tap the matching digital time |
 | `stellen` | Digital time | Drag/tap the hands to match |
-| `wort-lesen` | Clock face | Tap the matching German phrase |
-| `wort-stellen` | German phrase | Drag/tap the hands to match |
-| `digital-wort` | Digital time (no clock) | Tap the matching German phrase |
-| `wort-digital` | German phrase (no clock) | Tap the matching digital time |
+| `wort-lesen` | Clock face | Tap the matching phrase |
+| `wort-stellen` | Phrase | Drag/tap the hands to match |
+| `digital-wort` | Digital time (no clock) | Tap the matching phrase |
+| `wort-digital` | Phrase (no clock) | Tap the matching digital time |
 
-The two no-clock modes only appear from the half-hour tier onward —
-3:00 ↔ "drei Uhr" is too obvious for a quiz — and not on 24h levels,
-where German clock-words don't distinguish AM from PM.
+The two no-clock modes only appear from the half-hour tier onward. Full-hour
+translation drills like 3:00 ↔ "drei Uhr" / "three o'clock" are too obvious
+for a quiz, and clock-word phrases do not distinguish AM from PM, so they are
+not introduced for 24h levels.
 
 A round is 10 questions. Scores at ≥8 / ≥9 / ≥10 earn a Spross / Blüte /
 Löwenzahn for that level and persist across sessions.
@@ -108,10 +110,10 @@ loads `engine.js` and asserts on the pure functions. Coverage:
   consistent with the level's minute set; reviews never pair the full
   hour with `digital-wort` / `wort-digital`
 - `localStorage` — `saveMastery` / `loadMastery` round-trip; mastery is
-  keyed by the level's stable string key (e.g. `lesen-volle`,
-  `review-after-halbe`); `resetMastery` clears both `uhrzeit.mastery.v3`
-  and `uhrzeit.level`; legacy `v1` (numeric, pre-review) and `v2`
-  (numeric, post-review) data migrate into v3 stable keys on first load
+  scoped by language and keyed by the level's stable string key (e.g.
+  `lesen-volle`, `review-after-halbe`); reset clears mastery and
+  per-language level pointers; legacy progress migrates into the German
+  language bucket on first load
 
 The document title updates to `N ✓ / M ✗ — Uhrzeit Tests`, handy for a
 headless CI check that greps `#summary`.

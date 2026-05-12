@@ -1,7 +1,7 @@
 {
   "name": "Uhrzeit Lernen",
   "short_name": "Uhrzeit",
-  "description": "German clock-reading practice with a progressive curriculum.",
+  "description": "Clock-reading practice with a progressive curriculum.",
   "lang": "de",
   "start_url": "./",
   "scope": "./",

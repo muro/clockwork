@@ -95,6 +95,19 @@
     margin: 0 0 10px;
     font-size: 20px;
   }
+  .status {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 3px 7px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #fff;
+    background: var(--green);
+    vertical-align: middle;
+  }
   ul {
     margin: 14px 0 0;
     padding-left: 20px;
@@ -102,6 +115,11 @@
     line-height: 1.55;
   }
   li + li { margin-top: 8px; }
+  .done {
+    text-decoration: line-through;
+    text-decoration-thickness: 1.5px;
+    color: rgba(140,108,86,0.72);
+  }
   code {
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: 0.92em;
@@ -186,6 +204,10 @@
   .chip.green { background: var(--green); }
   .chip.blue { background: var(--blue); }
   .chip.gold { background: var(--gold); }
+  .chip.done {
+    background: rgba(79,139,47,0.72);
+    text-decoration-color: rgba(255,255,255,0.9);
+  }
   .flow {
     width: 100%;
     height: auto;
@@ -232,13 +254,13 @@
     <h2>Workstreams</h2>
     <div class="grid">
       <article class="panel">
-        <h3>Language Support</h3>
+        <h3>Language Support <span class="status">Complete</span></h3>
         <ul>
-          <li>Add an in-app language selector for German and English.</li>
-          <li>Keep learning progress language-aware so word-based mastery does not carry across languages accidentally.</li>
-          <li>Move clock-word generation behind a language-aware phrase layer.</li>
-          <li>Add language-specific distractor rules, for example English forms such as "twenty to twelve" for 11:40.</li>
-          <li>Extend the browser tests to cover word options and phrase generation per language.</li>
+          <li class="done">Add an in-app language selector for German and English.</li>
+          <li class="done">Keep learning progress language-aware so word-based mastery does not carry across languages accidentally.</li>
+          <li class="done">Move clock-word generation behind a language-aware phrase layer.</li>
+          <li class="done">Add language-specific distractor rules, for example English forms such as "twenty to twelve" for 11:40.</li>
+          <li class="done">Extend the browser tests to cover word options, phrase generation, progress storage, and the UI selector contract per language.</li>
         </ul>
       </article>
       <article class="panel">
@@ -256,17 +278,17 @@
   <section>
     <h2>Suggested Sequence</h2>
     <div class="timeline" aria-label="Roadmap sequence">
-      <article class="step">
+      <article class="step done">
         <div class="dot"></div>
         <h3>Phrase Layer</h3>
         <p>Extract word rendering from direct German-only helpers into a small language-aware API.</p>
       </article>
-      <article class="step">
+      <article class="step done">
         <div class="dot"></div>
         <h3>Language State</h3>
         <p>Persist selected language and scope current level plus mastery by language.</p>
       </article>
-      <article class="step">
+      <article class="step done">
         <div class="dot"></div>
         <h3>English Curriculum QA</h3>
         <p>Craft English phrase examples and distractors, then expand tests around those contracts.</p>
@@ -325,14 +347,14 @@
       <div class="head">Higher Risk</div>
 
       <div class="axis">Now</div>
-      <div><span class="chip green">Roadmap</span></div>
-      <div><span class="chip blue">Phrase API</span></div>
+      <div><span class="chip green done">Roadmap</span></div>
+      <div><span class="chip blue done">Phrase API</span></div>
       <div></div>
 
       <div class="axis">Next</div>
-      <div><span class="chip green">Language picker</span></div>
-      <div><span class="chip blue">Language-scoped mastery</span></div>
-      <div><span class="chip gold">English distractors</span></div>
+      <div><span class="chip green done">Language picker</span></div>
+      <div><span class="chip blue done">Language-scoped mastery</span></div>
+      <div><span class="chip gold done">English distractors</span></div>
 
       <div class="axis">Later</div>
       <div></div>

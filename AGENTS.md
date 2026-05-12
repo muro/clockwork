@@ -4,7 +4,7 @@ This file provides guidance for AI coding agents when working with code in this 
 
 ## What this is
 
-`Uhrzeit Lernen` — a single-page, zero-build German clock-reading game. The whole app is `web/index.html` + `web/engine.js`, loaded directly in the browser. JSX runs at runtime via `@babel/standalone` from a CDN; React is also CDN-loaded. No npm, no bundler, no build step.
+`Uhrzeit Lernen` — a single-page, zero-build clock-reading game with German and English practice. The whole app is `web/index.html` + `web/engine.js`, loaded directly in the browser. JSX runs at runtime via `@babel/standalone` from a CDN; React is also CDN-loaded. No npm, no bundler, no build step.
 
 ## Run / develop / test
 
@@ -70,9 +70,9 @@ Use this stance for pending work, local diffs, existing code, and pull requests.
 
 **Mode = `<prompt-modality>-<answer-modality>`.** `MODE_SPECS` in `engine.js` is the single source of truth: `lesen` / `stellen` / `wort-lesen` / `wort-stellen` / `digital-wort` / `wort-digital`, mapping over `clock` / `digital` / `word`. `index.html` reads `modeView(mode)` rather than hand-mapping mode → prompt/answer, and a structural test in `tests.html` makes "same modality on both sides" unreachable.
 
-**Review levels** carry `review: true`, a `modes` array, and a `minuteSets` array. `makeQuestion` picks one mode per question and draws a minute from the union. The `digital-wort` / `wort-digital` modes are re-rolled when the minute is `0` (full hour) — `3:00 ↔ "drei Uhr"` is too trivial to grade. Reviews are not introduced for 24h tier (German clock-words don't distinguish AM/PM).
+**Review levels** carry `review: true`, a `modes` array, and a `minuteSets` array. `makeQuestion` picks one mode per question and draws a minute from the union. The `digital-wort` / `wort-digital` modes are re-rolled when the minute is `0` (full hour) — `3:00 ↔ "drei Uhr"` / `3:00 ↔ "three o'clock"` is too trivial to grade. Reviews are not introduced for 24h tier because clock-word phrases don't distinguish AM/PM.
 
-**Mastery storage versioning.** `loadMastery` chains migrations: v1 (numeric ids, pre-review) → v2 (numeric ids, post-review) → v3 (stable string keys, current). The `V2_TO_V3` table is **frozen** — do not edit it; future curriculum reorderings should not need another migration as long as the `key` strings stay stable. `resetMastery` clears `uhrzeit.mastery.v3` and `uhrzeit.level`.
+**Mastery storage versioning.** `loadMastery` chains migrations: v1 (numeric ids, pre-review) → v2 (numeric ids, post-review) → v3 (stable string keys) → v4 (language-scoped mastery, current). The `V2_TO_V3` table is **frozen** — do not edit it; future curriculum reorderings should not need another migration as long as the `key` strings stay stable. `resetMastery` clears mastery plus per-language level pointers.
 
 **24h levels and AM/PM.** In `hour24` mode the clock face cannot disambiguate AM from PM, so `buildDigitalOptions` restricts distractors to the same half-day as the answer; questions only render PM (12..23) since the AM half is just 12h notation already covered by earlier levels.
 
