@@ -1,12 +1,11 @@
 # Uhrzeit Lernen
 
-A small, zero-install German clock-reading game. Six exercise types across
-a 27-level curriculum (volle → halbe → **review** → viertel → **review** →
-5-Minuten → **review** → 24h → minutengenau), growing a dandelion on each
-level you master. Each learning level focuses on the *new* minute positions
-for its tier; review levels mix all six modes across everything learned so
-far. Two color themes (Koralle / Abend) with an Auto swatch that follows
-`prefers-color-scheme`.
+A small, zero-install German clock-reading game with a progressive curriculum
+from full hours through finer-grained clock reading, growing a dandelion on
+each level you master. Each learning level focuses on the *new* minute
+positions for its tier; review levels mix the available modes across
+everything learned so far. Two color themes (Koralle / Abend) with an Auto
+swatch that follows `prefers-color-scheme`.
 
 ## Run it
 
@@ -21,8 +20,8 @@ python3 -m http.server 8765 --directory web
 ```
 
 State (current level + mastery per level) is kept in `localStorage`. The
-**Fortschritt zurücksetzen** button at the bottom of the app clears it; it
-uses a two-step confirmation (first tap arms, second tap within 4 s commits).
+reset control clears it with a two-step confirmation: the first tap arms the
+reset, and a second tap within a short confirmation window commits it.
 
 ## Files
 
@@ -34,7 +33,7 @@ All runtime files live in `web/`. The repo root holds meta files
 | `web/index.html` | The app. Loads React + Babel standalone from CDN and runs JSX inline. |
 | `web/engine.js` | Pure logic — `parseTime`, option builders, snap, mastery. No React, no DOM. Shared with `tests.html`. |
 | `web/preview.html` | Development preview. Renders `index.html` inside a phone-frame mockup via `<iframe>`. The frame is not part of the app. |
-| `web/tests.html` | 96 in-browser unit tests. Open directly or via the static server. |
+| `web/tests.html` | In-browser unit tests. Open directly or via the static server. |
 | `web/dandelion_*.png` | Bloom artwork used for level mastery and feedback overlays. |
 | `web/icon.png` | 512×512 app icon — clock face overlaid on `dandelion_single.png`, masked to the flower silhouette. Generated; see [Icon](#icon). |
 | `web/icon-192.png` | 192×192 derivative of `icon.png` for the Android manifest. Generated. |
@@ -80,7 +79,7 @@ Löwenzahn for that level and persist across sessions.
 
 **Review levels** sit between the learning blocks (after halbe, after
 viertel, and after 5-Minuten). Each question in a review randomly picks
-one of the six modes and draws a minute from the union of all sets so
+one of the available modes and draws a minute from the union of all sets so
 far, so a review round really exercises everything. When the random
 draw lands on the full hour with a `digital-wort` / `wort-digital` mode,
 the mode is re-rolled — that combo is too trivial to grade. The track
@@ -94,7 +93,7 @@ the growth icons.
 open http://localhost:8765/tests.html
 ```
 
-The file is self-contained: a ~40-line harness (`group`, `test`, `eq`, `ok`)
+The file is self-contained: a tiny harness (`group`, `test`, `eq`, `ok`)
 loads `engine.js` and asserts on the pure functions. Coverage:
 
 - `parseTime` / `hourName` / `digitalFromQ` / `wordFromQ` for every
@@ -102,9 +101,9 @@ loads `engine.js` and asserts on the pure functions. Coverage:
 - `snap5deg` / `snapHour` round-trip for the 5-minute grid and nearby drift
 - `masteryTier` thresholds and `recordMastery` monotonicity (best and tier
   only go up)
-- All six exercise types — option builders return 4 unique options that
+- Exercise option builders return 4 unique options that
   include the correct answer, for every (hour, minute) in each minute set
-- Level transitions — `LEVELS` covers all six modes; every level carries
+- Level transitions — `LEVELS` covers the available modes; every level carries
   a unique stable `key`; `makeQuestion` produces an `(h, m, parsed, mode)`
   consistent with the level's minute set; reviews never pair the full
   hour with `digital-wort` / `wort-digital`

@@ -33,6 +33,10 @@ python3 tools/build_icon.py   # writes web/icon.png and web/icon-192.png
 - Prefer focused edits over rewriting whole files. Preserve existing conventions, avoid duplicated logic, and do not expose internal details through public APIs unless necessary.
 - After editing, check whether the code is simpler or merely different. Remove dead branches, redundant state, and unnecessary special cases introduced by the change.
 
+## Roadmap
+
+`roadmap.html` is the living backlog for future product and technical work. When follow-up tasks or deferred ideas come up, add them there. When roadmap items are completed, either remove them or strike them through so the file stays useful instead of becoming historical clutter.
+
 ## Design principles
 
 Follow the spirit of *A Philosophy of Software Design*: reduce complexity with simple, deep, well-isolated abstractions.

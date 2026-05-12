@@ -865,7 +865,7 @@ function LevelIcon({ tier, active, accent, ink, paper, fillProgress = 0, review 
 // ============================================================
 function LevelTrack({ levelId, setLevelId, mastery, accent, ink, soft, trackBg, paper }) {
   // Two-row snake: row 0 runs left→right, a U-turn on the right connects down,
-  // row 1 runs right→left. Keeps the 20 stops at a comfortable gap even on a
+  // row 1 runs right→left. Keeps the stops at a comfortable gap even on a
   // narrow phone, and the curve gives a clear sense of progression.
   const hostRef = React.useRef(null);
   const [width, setWidth] = React.useState(0);
