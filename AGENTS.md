@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file provides guidance for AI coding agents when working with code in this repository.
+This file provides guidance for AI coding agents when working with code in this repository. Tool-specific entrypoints such as `CLAUDE.md` and `GEMINI.md` import this file.
 
 ## What this is
 
@@ -25,6 +25,38 @@ Regenerate the app icon (only when the icon design changes — the PNGs are comm
 pip3 install Pillow
 python3 tools/build_icon.py   # writes web/icon.png and web/icon-192.png
 ```
+
+## Working principles
+
+- Think before acting. Read the surrounding code and tests, identify the abstraction boundary being touched, and decide whether the change belongs in the caller, callee, data model, configuration, or tests.
+- Be concise in output but thorough in reasoning. If something is uncertain, say so.
+- Prefer focused edits over rewriting whole files. Preserve existing conventions, avoid duplicated logic, and do not expose internal details through public APIs unless necessary.
+- After editing, check whether the code is simpler or merely different. Remove dead branches, redundant state, and unnecessary special cases introduced by the change.
+
+## Design principles
+
+Follow the spirit of *A Philosophy of Software Design*: reduce complexity with simple, deep, well-isolated abstractions.
+
+- Prefer deep modules: simple, stable interfaces that hide meaningful complexity, implementation details, special cases, and policy decisions.
+- Do not split code just to make files or functions smaller. Introduce an abstraction only when it reduces real complexity or matches an established pattern in this codebase.
+- Optimize for long-term simplicity over short-term patch speed.
+- When fixing a bug, look for the design issue that allowed it. Prefer removing the source of complexity, narrowing states, validating earlier, or making invalid states unrepresentable over adding another conditional.
+- Avoid tactical changes that satisfy the immediate request while making nearby code harder to reason about.
+- Keep interfaces general enough to support nearby use cases, but do not build speculative frameworks.
+- Make the main path obvious. Follow existing naming, layout, error handling, and abstraction patterns unless there is a clear reason to change them.
+- Treat comments as part of the design: explain intent, invariants, non-obvious tradeoffs, and abstraction boundaries, not line-by-line mechanics.
+- Refactor continuously when complexity accumulates near the code being changed.
+
+## Reviewing changes
+
+Use this stance for pending work, local diffs, existing code, and pull requests. Apply the working and design principles above; this section only adds the review-specific posture.
+
+- Think hard and review carefully. Assume the code will need to stay understandable and maintainable for a long time.
+- Lead with findings. Prioritize bugs, behavior regressions, missing tests, confusing abstractions, and violations of the learning-system design. Cite specific files and lines; keep summaries brief.
+- Review correctness against the documented mastery, level progression, review-level, mode, distractor, snap-grid, and UI contracts.
+- Review design fit when screens change: the UI should keep the existing visual language, phone-first layout, safe-area behavior, and debug-only controls behind `?debug=1` / `#debug`.
+- Do not request abstraction, deduplication, or cleanup unless it reduces real complexity or prevents a likely bug.
+- If there are no findings, say so clearly and mention any remaining verification gaps or residual risks.
 
 ## Architecture
 
@@ -55,7 +87,8 @@ python3 tools/build_icon.py   # writes web/icon.png and web/icon-192.png
 
 ## Conventions
 
-- Work in red-green TDD: add a failing test in `web/tests.html` first, make it pass with the smallest change, then refactor. Run `tests.html` between steps.
+- Work in red-green TDD for behavior changes: add a failing test in `web/tests.html` first, make it pass with the smallest change, then refactor. Run `tests.html` between steps or explain why it was not run.
+- For UI changes, run the app in a browser and check the actual interaction or layout that changed.
 - No build step; do not introduce one. JSX runs through `@babel/standalone` in the browser.
 - Don't add npm/bundler/test-runner dependencies without an explicit ask.
 - Pure logic goes in `engine.js` and is exported via `Object.assign(window, { ... })` at the bottom of the file.
