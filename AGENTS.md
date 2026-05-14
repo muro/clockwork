@@ -32,6 +32,7 @@ To trigger a new production release:
 
 1. Commit and push the Clockwork changes in this repository to GitHub.
 2. In `~/develop/aidistillery.dev`, create an empty commit and push it to GitHub.
+3. Poll `https://aidistillery.dev/clockwork/` every 30 seconds for up to 3 minutes. Treat the release as done only after verifying the deployed page/assets show the expected change; for offline/PWA work, confirm `/clockwork/sw.js` serves the service worker and `/clockwork/vendor/*` runtime assets are present.
 
 ## Working principles
 
