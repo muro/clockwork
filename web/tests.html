@@ -987,6 +987,53 @@ group('app UI language selector contract', () => {
   });
 });
 
+group('offline PWA shell', () => {
+  function fetchText(path) {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', `${path}?cache=${Date.now()}`, false);
+    xhr.send();
+    eq(xhr.status, 200, `${path} should load`);
+    return xhr.responseText;
+  }
+
+  test('index.html uses local runtime scripts and registers a service worker', () => {
+    const html = fetchText('index.html');
+    contains([html.includes('vendor/react.production.min.js')], true, 'local React runtime');
+    contains([html.includes('vendor/react-dom.production.min.js')], true, 'local ReactDOM runtime');
+    contains([html.includes('vendor/babel.min.js')], true, 'local Babel runtime');
+    contains([html.includes("serviceWorker.register('sw.js')")], true, 'service worker registration');
+    ok(!html.includes('https://unpkg.com/'), 'index should not depend on unpkg at runtime');
+    ok(!html.includes('https://fonts.googleapis.com/'), 'index should not depend on Google Fonts at runtime');
+  });
+
+  test('manifest starts directly at the app shell', () => {
+    const manifest = JSON.parse(fetchText('manifest.webmanifest'));
+    eq(manifest.start_url, './index.html');
+    eq(manifest.scope, './');
+    eq(manifest.display, 'standalone');
+  });
+
+  test('service worker precaches the app shell without remote URLs', () => {
+    const sw = fetchText('sw.js');
+    for (const asset of [
+      './index.html',
+      './engine.js',
+      './manifest.webmanifest',
+      './vendor/react.production.min.js',
+      './vendor/react-dom.production.min.js',
+      './vendor/babel.min.js',
+      './dandelion_single.png',
+      './icon.png',
+    ]) {
+      contains([sw.includes(asset)], true, `service worker caches ${asset}`);
+    }
+    contains([sw.includes('skipWaiting')], true, 'service worker activates promptly');
+    contains([sw.includes('clients.claim')], true, 'service worker claims open app tabs');
+    contains([sw.includes("cache: 'reload'")], true, 'service worker precache bypasses stale HTTP cache');
+    ok(!sw.includes('https://'), 'service worker shell cache should be self-contained');
+  });
+});
+
 // clean up after tests (do not leave test state in storage)
 window.addEventListener('load', () => {
   const { pass, fail } = run();

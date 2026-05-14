@@ -11,9 +11,6 @@
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon.png">
 <title>Uhrzeit Lernen</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,400;0,600;0,700;0,800;1,400;1,600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="preload" as="image" href="dandelion_single.png">
 <link rel="preload" as="image" href="dandelion_gone.png">
 <link rel="preload" as="image" href="dandelion_many.png">
@@ -51,7 +48,7 @@
     background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.15  0 0 0 0 0.15  0 0 0 0 0.1  0 0 0 0.8 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
     background-size: 220px 220px;
   }
-  body { font-family: Nunito, sans-serif; color: var(--ink); }
+  body { font-family: Nunito, ui-rounded, system-ui, -apple-system, BlinkMacSystemFont, sans-serif; color: var(--ink); }
   button { font-family: inherit; cursor: pointer; }
   @keyframes clockPop {
     0% { transform: scale(0) rotate(-20deg); }
@@ -109,10 +106,10 @@
 <body>
 <div id="root"></div>
 
-<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
-<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
-<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
-<script src="engine.js?v=language-v5"></script>
+<script src="vendor/react.production.min.js"></script>
+<script src="vendor/react-dom.production.min.js"></script>
+<script src="vendor/babel.min.js"></script>
+<script src="engine.js?v=pwa-offline-v1"></script>
 
 <script type="text/babel" data-presets="react">
 // ============================================================
@@ -1663,6 +1660,13 @@ function UhrzeitApp() {
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(<UhrzeitApp />);
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
 </script>
 </body>
 </html>

@@ -4,7 +4,7 @@ This file provides guidance for AI coding agents when working with code in this 
 
 ## What this is
 
-`Uhrzeit Lernen` — a single-page, zero-build clock-reading game with German and English practice. The whole app is `web/index.html` + `web/engine.js`, loaded directly in the browser. JSX runs at runtime via `@babel/standalone` from a CDN; React is also CDN-loaded. No npm, no bundler, no build step.
+`Uhrzeit Lernen` — a single-page, zero-build clock-reading game with German and English practice. The whole app is `web/index.html` + `web/engine.js`, loaded directly in the browser. JSX runs at runtime via the vendored `web/vendor/babel.min.js`; React and ReactDOM are vendored there too so the installed PWA can work offline. No npm, no bundler, no build step.
 
 ## Run / develop / test
 
@@ -17,7 +17,7 @@ python3 -m http.server 8765 --directory web
 
 `.claude/launch.json` configures the Claude Code preview server with the same command, on `:8765`.
 
-There is no test runner, no linter, and no CI. Tests are ~96 in-browser assertions in `web/tests.html` that load `engine.js` via a `<script>` tag and run a tiny harness (`group`, `test`, `eq`, `ok`). The page title updates to `N ✓ / M ✗ — Uhrzeit Tests` so a headless check can grep `#summary`.
+There is no test runner, no linter, and no CI. Tests are in-browser assertions in `web/tests.html` that load `engine.js` via a `<script>` tag and run a tiny harness (`group`, `test`, `eq`, `ok`). The page title updates to `N ✓ / M ✗ — Uhrzeit Tests` so a headless check can grep `#summary`.
 
 Regenerate the app icon (only when the icon design changes — the PNGs are committed):
 
@@ -25,6 +25,13 @@ Regenerate the app icon (only when the icon design changes — the PNGs are comm
 pip3 install Pillow
 python3 tools/build_icon.py   # writes web/icon.png and web/icon-192.png
 ```
+
+## Release
+
+To trigger a new production release:
+
+1. Commit and push the Clockwork changes in this repository to GitHub.
+2. In `~/develop/aidistillery.dev`, create an empty commit and push it to GitHub.
 
 ## Working principles
 
@@ -84,6 +91,8 @@ Use this stance for pending work, local diffs, existing code, and pull requests.
 
 - `web/index.html` — the app; ~1500 lines of inline JSX, themes, clock rendering, drag handlers. Frame-less; uses `dvh` + `env(safe-area-inset-*)` to fill a phone screen.
 - `web/engine.js` — pure logic; the only file with unit tests behind it.
+- `web/sw.js` — service worker for the offline app shell. Bump the cache name when cached runtime assets change.
+- `web/vendor/` — committed React, ReactDOM, and Babel standalone runtime files; keep them local so the PWA stays offline-capable.
 - `web/tests.html` — open in a browser to run tests. Self-contained.
 - `web/preview.html` — dev-only; renders `index.html` inside a phone-frame mockup via `<iframe>`. The frame is not part of the shipped app.
 - `web/manifest.webmanifest` — for "Add to Home Screen" on Android/iOS.
@@ -93,7 +102,7 @@ Use this stance for pending work, local diffs, existing code, and pull requests.
 
 - Work in red-green TDD for behavior changes: add a failing test in `web/tests.html` first, make it pass with the smallest change, then refactor. Run `tests.html` between steps or explain why it was not run.
 - For UI changes, run the app in a browser and check the actual interaction or layout that changed.
-- No build step; do not introduce one. JSX runs through `@babel/standalone` in the browser.
+- No build step; do not introduce one. JSX runs through the vendored `@babel/standalone` runtime in the browser.
 - Don't add npm/bundler/test-runner dependencies without an explicit ask.
 - Pure logic goes in `engine.js` and is exported via `Object.assign(window, { ... })` at the bottom of the file.
 - The debug strip is hidden behind `?debug=1` / `#debug` — keep new debug-only UI behind the same flag.

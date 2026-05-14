@@ -3,7 +3,7 @@
   "short_name": "Uhrzeit",
   "description": "Clock-reading practice with a progressive curriculum.",
   "lang": "de",
-  "start_url": "./",
+  "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",

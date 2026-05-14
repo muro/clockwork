@@ -31,8 +31,10 @@ All runtime files live in `web/`. The repo root holds meta files
 
 | File | What it is |
 | --- | --- |
-| `web/index.html` | The app. Loads React + Babel standalone from CDN and runs JSX inline. |
+| `web/index.html` | The app. Loads local React + Babel standalone runtime files and runs JSX inline. |
 | `web/engine.js` | Pure logic — `parseTime`, option builders, snap, mastery. No React, no DOM. Shared with `tests.html`. |
+| `web/sw.js` | Service worker. Precaches the offline app shell and serves cached assets when the network is unavailable. |
+| `web/vendor/` | Committed React, ReactDOM, and Babel standalone files used by `index.html` so the app does not depend on CDNs. |
 | `web/preview.html` | Development preview. Renders `index.html` inside a phone-frame mockup via `<iframe>`. The frame is not part of the app. |
 | `web/tests.html` | In-browser unit tests. Open directly or via the static server. |
 | `web/dandelion_*.png` | Bloom artwork used for level mastery and feedback overlays. |
@@ -120,10 +122,10 @@ headless CI check that greps `#summary`.
 
 ## Design notes
 
-- **One artifact to ship.** `web/index.html` + `web/engine.js` = the whole
-  app. No build step, no npm, no bundler. JSX runs through
-  `@babel/standalone`. Trade-off: first paint is a couple of seconds on slow
-  connections while Babel loads.
+- **One artifact to ship.** `web/index.html` + `web/engine.js` plus the
+  committed `web/vendor/` runtime files = the whole app. No build step, no
+  npm, no bundler. JSX runs through vendored `@babel/standalone`; the service
+  worker precaches the app shell for offline use.
 - **Engine is framework-agnostic.** All pure logic lives in `engine.js`,
   attached to `window`. `index.html` and `tests.html` both depend on it.
   If the UI ever moves off React, the engine and its tests come along
