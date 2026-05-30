@@ -1051,6 +1051,20 @@ group('app UI language selector contract', () => {
     ok(!xhr.responseText.includes('strokeDashoffset={1 - levelProgress}'),
       'level progress fill should not use proportional path dash offset');
   });
+  test('index.html has natural Slovak review copy', () => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', `index.html?cache=${Date.now()}`, false);
+    xhr.send();
+    eq(xhr.status, 200);
+    contains([xhr.responseText.includes('Opakovanie · po polhodinách')], true,
+      'Slovak half-hour review copy');
+    contains([xhr.responseText.includes('Opakovanie · po štvrťhodinách')], true,
+      'Slovak quarter-hour review copy');
+    ok(!xhr.responseText.includes('Opakovanie · po polhodiny'),
+      'avoid clunky Slovak half-hour wording');
+    ok(!xhr.responseText.includes('Opakovanie · po štvrťhodiny'),
+      'avoid clunky Slovak quarter-hour wording');
+  });
 });
 
 group('offline PWA shell', () => {
