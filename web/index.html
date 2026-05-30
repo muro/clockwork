@@ -339,6 +339,28 @@ const UI_TEXT = {
     ],
     praise: ["Exactly.","Correct.","Perfect.","Very nice.","That's it."],
   },
+  sk: {
+    languageLabel: 'Jazyk učenia',
+    setClock: 'Nastav hodiny na',
+    askTime: 'Koľko je hodín?',
+    askPhrase: 'Ktorá veta sedí?',
+    askAmPm: 'Ktorý AM/PM čas sedí?',
+    askDaypart: 'Ktorá časť dňa sedí?',
+    ask24h: 'Ktorý 24h čas sedí?',
+    correctAnswer: 'Správne',
+    roundComplete: 'Kolo dokončené',
+    again: 'Znova',
+    next: 'Ďalej',
+    reset: 'Vynulovať pokrok',
+    confirmReset: 'Ťukni na potvrdenie',
+    complete: [
+      'Skús to ešte raz.',
+      'Dobre, prvý výhonok.',
+      'Takmer dokonalé — kvet!',
+      'Perfektné! Púpava pre teba.',
+    ],
+    praise: ["Presne.","Správne.","Perfektné.","Veľmi dobre.","To je ono."],
+  },
 };
 function uiText(language) { return UI_TEXT[normalizeLanguage(language)] || UI_TEXT.de; }
 
@@ -376,9 +398,41 @@ const EN_LEVEL_COPY = {
   "lesen-minute": ["Minute precision", "Read the clock · every minute"],
   "stellen-minute": ["Set minute precision", "Set the clock · every minute"],
 };
+const SK_LEVEL_COPY = {
+  "lesen-volle": ["Celé hodiny", "Čítaj hodiny · :00"],
+  "stellen-volle": ["Nastav celé hodiny", "Nastav hodiny · :00"],
+  "lesen-halbe": ["Polhodiny", "Čítaj hodiny · :30"],
+  "wort-lesen-halbe": ["Polhodiny slovom", "Ktorá veta sedí?"],
+  "wort-stellen-halbe": ["Nastav polhodiny slovom", "Veta na hodiny"],
+  "stellen-halbe": ["Nastav polhodiny", "Nastav hodiny · :30"],
+  "wort-digital-halbe": ["Polhodiny · nájdi čas", 'Koľko je „pol štvrtej"?'],
+  "digital-wort-halbe": ["Polhodiny · nájdi vetu", "Ako sa povie 3:30?"],
+  "review-after-halbe": ["Opakovanie · po polhodiny", "Všetko doteraz spolu"],
+  "lesen-viertel": ["Štvrťhodiny", "Čítaj hodiny · :15, :45"],
+  "wort-lesen-viertel": ["Štvrťhodiny slovom", "Ktorá veta sedí?"],
+  "wort-stellen-viertel": ["Nastav štvrťhodiny slovom", "Veta na hodiny"],
+  "stellen-viertel": ["Nastav štvrťhodiny", "Nastav hodiny · :15, :45"],
+  "wort-digital-viertel": ["Štvrťhodiny · nájdi čas", 'Koľko je „trištvrte na sedem"?'],
+  "digital-wort-viertel": ["Štvrťhodiny · nájdi vetu", "Ako sa povie 6:45?"],
+  "review-after-viertel": ["Opakovanie · po štvrťhodiny", "Všetko doteraz spolu"],
+  "lesen-fuenf": ["5-minútové časy", "Čítaj hodiny · každých 5 minút"],
+  "wort-lesen-fuenf": ["5-minútové časy slovom", "Ktorá veta sedí?"],
+  "wort-stellen-fuenf": ["Nastav 5-minútové časy slovom", "Veta na hodiny"],
+  "stellen-fuenf": ["Nastav 5-minútové časy", "Nastav hodiny · každých 5 minút"],
+  "wort-digital-fuenf": ["5 minút · nájdi čas", 'Koľko je „štyri hodiny a dvadsaťpäť minút"?'],
+  "digital-wort-fuenf": ["5 minút · nájdi vetu", "Ako sa povie 4:25?"],
+  "review-after-fuenf": ["Opakovanie · po 5 minút", "Všetko doteraz spolu"],
+  "sk-review-after-fuenf": ["Opakovanie · po 5 minút", "Čítanie a nastavovanie hodín"],
+  "lesen-fuenf-24h": ["24-hodinový čas", "Čítaj hodiny · 24h"],
+  "stellen-fuenf-24h": ["Nastav 24-hodinový čas", "Nastav hodiny · 24h"],
+  "lesen-minute": ["Presne na minútu", "Čítaj hodiny · každá minúta"],
+  "stellen-minute": ["Nastav presne na minútu", "Nastav hodiny · každá minúta"],
+};
 function levelCopy(level, language) {
-  if (normalizeLanguage(language) !== 'en') return { title: level.title, sub: level.sub };
-  const copy = EN_LEVEL_COPY[level.key];
+  const lang = normalizeLanguage(language);
+  const source = lang === 'en' ? EN_LEVEL_COPY : lang === 'sk' ? SK_LEVEL_COPY : null;
+  if (!source) return { title: level.title, sub: level.sub };
+  const copy = source[level.key];
   return copy ? { title: copy[0], sub: copy[1] } : { title: level.title, sub: level.sub };
 }
 

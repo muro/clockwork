@@ -6,6 +6,7 @@ const DEFAULT_LANGUAGE = 'de';
 const LANGUAGES = [
   { key: 'de', label: 'Deutsch', shortLabel: 'DE' },
   { key: 'en', label: 'English', shortLabel: 'EN' },
+  { key: 'sk', label: 'Slovenčina', shortLabel: 'SK' },
 ];
 function normalizeLanguage(language) {
   return LANGUAGES.some(l => l.key === language) ? language : DEFAULT_LANGUAGE;
@@ -63,8 +64,10 @@ function daypartTimeFromQ(q) {
 
 const HOUR_NAMES = ["zwölf","eins","zwei","drei","vier","fünf","sechs","sieben","acht","neun","zehn","elf","zwölf"];
 const EN_HOUR_NAMES = ["twelve","one","two","three","four","five","six","seven","eight","nine","ten","eleven","twelve"];
+const SK_HOUR_NAMES = ["dvanásť","jedna","dve","tri","štyri","päť","šesť","sedem","osem","deväť","desať","jedenásť","dvanásť"];
 function hourName(h, language = DEFAULT_LANGUAGE) {
-  const names = normalizeLanguage(language) === 'en' ? EN_HOUR_NAMES : HOUR_NAMES;
+  const lang = normalizeLanguage(language);
+  const names = lang === 'en' ? EN_HOUR_NAMES : lang === 'sk' ? SK_HOUR_NAMES : HOUR_NAMES;
   return names[h % 12 === 0 ? 12 : h % 12];
 }
 
@@ -114,10 +117,67 @@ function parseEnglishTime(h, m) {
   return { minute: null, hour: h, next, full: digital, fullWord: digital };
 }
 
+const SK_HALF_HOUR_NAMES = {
+  1: 'prvej', 2: 'druhej', 3: 'tretej', 4: 'štvrtej',
+  5: 'piatej', 6: 'šiestej', 7: 'siedmej', 8: 'ôsmej',
+  9: 'deviatej', 10: 'desiatej', 11: 'jedenástej', 12: 'dvanástej',
+};
+const SK_MINUTE_WORDS = {
+  1: 'jedna', 2: 'dve', 3: 'tri', 4: 'štyri', 5: 'päť',
+  6: 'šesť', 7: 'sedem', 8: 'osem', 9: 'deväť', 10: 'desať',
+  11: 'jedenásť', 12: 'dvanásť', 13: 'trinásť', 14: 'štrnásť',
+  15: 'pätnásť', 16: 'šestnásť', 17: 'sedemnásť', 18: 'osemnásť',
+  19: 'devätnásť', 20: 'dvadsať', 21: 'dvadsaťjeden',
+  22: 'dvadsaťdva', 23: 'dvadsaťtri', 24: 'dvadsaťštyri',
+  25: 'dvadsaťpäť', 26: 'dvadsaťšesť', 27: 'dvadsaťsedem',
+  28: 'dvadsaťosem', 29: 'dvadsaťdeväť', 30: 'tridsať',
+  31: 'tridsaťjeden', 32: 'tridsaťdva', 33: 'tridsaťtri',
+  34: 'tridsaťštyri', 35: 'tridsaťpäť', 36: 'tridsaťšesť',
+  37: 'tridsaťsedem', 38: 'tridsaťosem', 39: 'tridsaťdeväť',
+  40: 'štyridsať', 41: 'štyridsaťjeden', 42: 'štyridsaťdva',
+  43: 'štyridsaťtri', 44: 'štyridsaťštyri', 45: 'štyridsaťpäť',
+  46: 'štyridsaťšesť', 47: 'štyridsaťsedem', 48: 'štyridsaťosem',
+  49: 'štyridsaťdeväť', 50: 'päťdesiat', 51: 'päťdesiatjeden',
+  52: 'päťdesiatdva', 53: 'päťdesiattri', 54: 'päťdesiatštyri',
+  55: 'päťdesiatpäť', 56: 'päťdesiatšesť', 57: 'päťdesiatsedem',
+  58: 'päťdesiatosem', 59: 'päťdesiatdeväť',
+};
+function slovakHourUnit(h) {
+  const n = h % 12 === 0 ? 12 : h % 12;
+  if (n === 1) return 'hodina';
+  if (n >= 2 && n <= 4) return 'hodiny';
+  return 'hodín';
+}
+function slovakMinuteUnit(m) {
+  return m === 1 ? 'minúta' : (m >= 2 && m <= 4) ? 'minúty' : 'minút';
+}
+function parseSlovakTime(h, m) {
+  const next = (h % 12) + 1;
+  switch (m) {
+    case 0: return { minute: null, hour: h, next, full: `${h} ${slovakHourUnit(h)}`, fullWord: `${hourName(h, 'sk')} ${slovakHourUnit(h)}` };
+    case 15: return { minute: 'štvrť na', hour: next, next, full: `štvrť na ${next}`, fullWord: `štvrť na ${hourName(next, 'sk')}` };
+    case 30: return { minute: 'pol', hour: next, next, full: `pol ${next}`, fullWord: `pol ${SK_HALF_HOUR_NAMES[next]}` };
+    case 45: return { minute: 'trištvrte na', hour: next, next, full: `trištvrte na ${next}`, fullWord: `trištvrte na ${hourName(next, 'sk')}` };
+  }
+  const minuteWord = SK_MINUTE_WORDS[m];
+  if (minuteWord) {
+    return {
+      minute: `${m} minút`,
+      hour: h,
+      next,
+      full: `${h}:${String(m).padStart(2, "0")}`,
+      fullWord: `${hourName(h, 'sk')} ${slovakHourUnit(h)} a ${minuteWord} ${slovakMinuteUnit(m)}`,
+    };
+  }
+  const digital = `${h}:${String(m).padStart(2, "0")}`;
+  return { minute: null, hour: h, next, full: digital, fullWord: digital };
+}
+
 function parseTime(h, m, language = DEFAULT_LANGUAGE) {
-  return normalizeLanguage(language) === 'en'
-    ? parseEnglishTime(h, m)
-    : parseGermanTime(h, m);
+  const lang = normalizeLanguage(language);
+  if (lang === 'en') return parseEnglishTime(h, m);
+  if (lang === 'sk') return parseSlovakTime(h, m);
+  return parseGermanTime(h, m);
 }
 function digitalStr(h, m) { return `${h}:${String(m).padStart(2, "0")}`; }
 function digitalFromQ(q) { const hh = q.dh ?? q.h; return `${hh}:${String(q.m).padStart(2, "0")}`; }
@@ -240,13 +300,15 @@ const LEVELS = [
   { key: "review-after-viertel", review: true, modes: CORE_MODES, minuteSets: ["volle", "halbe", "viertel"],
     hour24: false, title: "Wiederholung · bis Viertel", sub: "Alles Gelernte gemischt" },
   { key: "lesen-fuenf",          mode: "lesen",        minuteSet: "fuenf",   hour24: false, title: "5-Minuten",          sub: "Uhr ablesen · alle 5" },
-  { key: "wort-lesen-fuenf",     mode: "wort-lesen",   minuteSet: "fuenf",   hour24: false, title: "5-Min. · Wörter",    sub: "Welcher Satz passt?" },
-  { key: "wort-stellen-fuenf",   mode: "wort-stellen", minuteSet: "fuenf",   hour24: false, title: "5-Min. · stellen",   sub: "Satz zur Uhr" },
+  { key: "wort-lesen-fuenf",     mode: "wort-lesen",   minuteSet: "fuenf",   hour24: false, excludeLanguages: ["sk"], title: "5-Min. · Wörter",    sub: "Welcher Satz passt?" },
+  { key: "wort-stellen-fuenf",   mode: "wort-stellen", minuteSet: "fuenf",   hour24: false, excludeLanguages: ["sk"], title: "5-Min. · stellen",   sub: "Satz zur Uhr" },
   { key: "stellen-fuenf",        mode: "stellen",      minuteSet: "fuenf",   hour24: false, title: "5-Min. stellen",     sub: "Uhr stellen · alle 5" },
-  { key: "wort-digital-fuenf",   mode: "wort-digital", minuteSet: "fuenf",   hour24: false, title: "5-Min. · Zeit finden", sub: 'Wie spät ist „fünf vor halb fünf"?' },
-  { key: "digital-wort-fuenf",   mode: "digital-wort", minuteSet: "fuenf",   hour24: false, title: "5-Min. · Wort finden", sub: "Wie heißt 4:25?" },
-  { key: "review-after-fuenf",   review: true, modes: CORE_MODES, minuteSets: ["volle", "halbe", "viertel", "fuenf"],
+  { key: "wort-digital-fuenf",   mode: "wort-digital", minuteSet: "fuenf",   hour24: false, excludeLanguages: ["sk"], title: "5-Min. · Zeit finden", sub: 'Wie spät ist „fünf vor halb fünf"?' },
+  { key: "digital-wort-fuenf",   mode: "digital-wort", minuteSet: "fuenf",   hour24: false, excludeLanguages: ["sk"], title: "5-Min. · Wort finden", sub: "Wie heißt 4:25?" },
+  { key: "review-after-fuenf",   review: true, modes: CORE_MODES, minuteSets: ["volle", "halbe", "viertel", "fuenf"], excludeLanguages: ["sk"],
     hour24: false, title: "Wiederholung · bis 5-Min.", sub: "Alles Gelernte gemischt" },
+  { key: "sk-review-after-fuenf", review: true, modes: ["lesen", "stellen"], minuteSets: ["volle", "halbe", "viertel", "fuenf"], languages: ["sk"],
+    hour24: false, title: "Opakovanie · po 5 minút", sub: "Čítanie a nastavovanie hodín" },
   { key: "lesen-fuenf-24h",      mode: "lesen",        minuteSet: "fuenf",   hour24: true,  title: "24 Stunden",         sub: "Uhr ablesen · 24h" },
   { key: "stellen-fuenf-24h",    mode: "stellen",      minuteSet: "fuenf",   hour24: true,  title: "24h stellen",        sub: "Uhr stellen · 24h" },
   { key: "en-daypart-ampm",      mode: "daypart-ampm", minuteSets: ["volle", "halbe", "viertel", "fuenf"], languages: ["en"], hour24: false,
@@ -265,7 +327,8 @@ const LEVELS = [
 
 function levelSupportsLanguage(level, language = DEFAULT_LANGUAGE) {
   const lang = normalizeLanguage(language);
-  return !level.languages || level.languages.includes(lang);
+  return (!level.languages || level.languages.includes(lang)) &&
+    (!level.excludeLanguages || !level.excludeLanguages.includes(lang));
 }
 function levelsForLanguage(language = DEFAULT_LANGUAGE) {
   const lang = normalizeLanguage(language);
@@ -376,11 +439,30 @@ function addEnglishWordDistractors(opts, q) {
   opts.add(parseTime(prev, m, 'en').fullWord);
 }
 
+function addSlovakWordDistractors(opts, q) {
+  const { h, m } = q;
+  const next = (h % 12) + 1;
+  const prev = h === 1 ? 12 : h - 1;
+
+  if (m === 15) opts.add(parseTime(h, 45, 'sk').fullWord);
+  if (m === 45) opts.add(parseTime(h, 15, 'sk').fullWord);
+  if (m === 30) {
+    opts.add(parseTime(next, 30, 'sk').fullWord);
+    opts.add(parseTime(prev, 30, 'sk').fullWord);
+  }
+  if (![0, 15, 30, 45].includes(m)) {
+    opts.add(parseTime(next, m, 'sk').fullWord);
+    opts.add(parseTime(prev, m, 'sk').fullWord);
+    opts.add(parseTime(h, 60 - m, 'sk').fullWord);
+  }
+}
+
 function buildWordOptions(q, level, language = q.language || DEFAULT_LANGUAGE) {
   const lang = normalizeLanguage(language);
   const correct = wordFromQ(q, lang);
   const opts = new Set([correct]);
   if (lang === 'en') addEnglishWordDistractors(opts, q);
+  else if (lang === 'sk') addSlovakWordDistractors(opts, q);
   else addGermanWordDistractors(opts, q);
 
   const mins = effectiveMinutes(level).filter(x => x !== 0);
@@ -689,7 +771,7 @@ function resetMastery() {
 
 Object.assign(window, {
   DEFAULT_LANGUAGE, LANGUAGES, LANGUAGE_KEY, normalizeLanguage,
-  HOUR_NAMES, EN_HOUR_NAMES, hourName, parseTime, digitalStr, digitalFromQ, wordFromQ,
+  HOUR_NAMES, EN_HOUR_NAMES, SK_HOUR_NAMES, hourName, parseTime, digitalStr, digitalFromQ, wordFromQ,
   hour12From24, ampmPeriodFrom24, ampmTimeFromQ, digital24FromQ, daypartKeyFrom24, daypartTimeFromQ, textFromQ,
   MINUTE_SETS, LEVELS, CORE_MODES, AMPM_MODES, ALL_MODES, MODE_SPECS, modeView, levelsForLanguage, levelSupportsLanguage, pickRandom, shuffle,
   effectiveMinutes, pickMode,

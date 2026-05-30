@@ -84,9 +84,10 @@ group('hourName & parseTime', () => {
     eq(hourName(1), 'eins'); eq(hourName(12), 'zwölf'); eq(hourName(13), 'eins');
   });
   test('language metadata normalizes to supported languages', () => {
-    eq(LANGUAGES.map(l => l.key), ['de', 'en']);
+    eq(LANGUAGES.map(l => l.key), ['de', 'en', 'sk']);
     eq(normalizeLanguage('de'), 'de');
     eq(normalizeLanguage('en'), 'en');
+    eq(normalizeLanguage('sk'), 'sk');
     eq(normalizeLanguage('fr'), 'de');
     eq(normalizeLanguage(null), 'de');
   });
@@ -106,6 +107,14 @@ group('hourName & parseTime', () => {
     eq(parseTime(11, 40, 'en').fullWord, 'twenty to twelve');
     eq(parseTime(11, 45, 'en').fullWord, 'quarter to twelve');
     eq(parseTime(5, 25, 'en').fullWord, 'twenty-five past five');
+  });
+  test('parseTime supports Slovak clock words where the curriculum uses words', () => {
+    eq(parseTime(1, 0, 'sk').fullWord, 'jedna hodina');
+    eq(parseTime(3, 0, 'sk').fullWord, 'tri hodiny');
+    eq(parseTime(5, 0, 'sk').fullWord, 'päť hodín');
+    eq(parseTime(3, 15, 'sk').fullWord, 'štvrť na štyri');
+    eq(parseTime(3, 30, 'sk').fullWord, 'pol štvrtej');
+    eq(parseTime(3, 45, 'sk').fullWord, 'trištvrte na štyri');
   });
   test('parseTime(3, 30) → "halb vier" (advances hour)', () => {
     const p = parseTime(3, 30);
@@ -204,6 +213,7 @@ group('digitalFromQ / wordFromQ', () => {
   test('wordFromQ can render a requested language from h/m', () => {
     const q = { h: 11, m: 40, parsed: parseTime(11, 40) };
     eq(wordFromQ(q, 'en'), 'twenty to twelve');
+    eq(wordFromQ(q, 'sk'), 'jedenásť hodín a štyridsať minút');
     eq(wordFromQ(q, 'de'), 'zwanzig vor zwölf');
   });
 });
@@ -485,6 +495,31 @@ group('exercise: wort-lesen', () => {
       }
     }
   });
+  test('Slovak phrase options include correct and are 4 unique for meaningful word levels', () => {
+    for (const minuteSet of ['halbe', 'viertel']) {
+      const level = { mode: 'wort-lesen', minuteSet, hour24: false };
+      for (const m of MINUTE_SETS[minuteSet]) {
+        for (let h = 1; h <= 12; h++) {
+          const q = { h, m, dh: h, language: 'sk', parsed: parseTime(h, m, 'sk') };
+          const { options } = buildWordOptions(q, level, 'sk');
+          eq(options.length, 4, `h=${h} m=${m}`);
+          eq(new Set(options).size, 4, `unique h=${h} m=${m}`);
+          contains(options, wordFromQ(q, 'sk'), `correct included h=${h} m=${m}`);
+        }
+      }
+    }
+  });
+  test('Slovak quarter and half distractors use Slovak wording', () => {
+    let q = { h: 3, m: 15, dh: 3, language: 'sk', parsed: parseTime(3, 15, 'sk') };
+    let built = buildWordOptions(q, { mode: 'wort-lesen', minuteSet: 'viertel', hour24: false }, 'sk');
+    contains(built.options, 'štvrť na štyri');
+    contains(built.options, 'trištvrte na štyri');
+
+    q = { h: 3, m: 30, dh: 3, language: 'sk', parsed: parseTime(3, 30, 'sk') };
+    built = buildWordOptions(q, { mode: 'wort-lesen', minuteSet: 'halbe', hour24: false }, 'sk');
+    contains(built.options, 'pol štvrtej');
+    contains(built.options, 'pol tretej');
+  });
   test('English 11:40 offers "twenty to twelve" with a past/to distractor', () => {
     const q = { h: 11, m: 40, dh: 11, language: 'en', parsed: parseTime(11, 40, 'en') };
     const { options } = buildWordOptions(q, { mode: 'wort-lesen', minuteSet: 'fuenf', hour24: false }, 'en');
@@ -602,12 +637,25 @@ group('transitions between exercises', () => {
     const ampmModes = ['daypart-ampm', 'ampm-daypart', 'digital24-ampm', 'ampm-digital24'];
     const deLevels = levelsForLanguage('de');
     const enLevels = levelsForLanguage('en');
+    const skLevels = levelsForLanguage('sk');
     ok(enLevels.length > deLevels.length, 'English should expose extra AM/PM practice');
     for (const mode of ampmModes) {
       ok(!deLevels.some(l => l.mode === mode), `German should not include ${mode}`);
+      ok(!skLevels.some(l => l.mode === mode), `Slovak should not include ${mode}`);
       ok(enLevels.some(l => l.mode === mode), `English should include ${mode}`);
     }
     eq(levelsForLanguage('fr').length, deLevels.length, 'unknown language falls back to German curriculum');
+  });
+  test('Slovak curriculum excludes non-colloquial 5-minute word drills', () => {
+    const skLevels = levelsForLanguage('sk');
+    const excluded = ['wort-lesen-fuenf', 'wort-stellen-fuenf', 'wort-digital-fuenf', 'digital-wort-fuenf', 'review-after-fuenf'];
+    for (const key of excluded) {
+      ok(!skLevels.some(l => l.key === key), `Slovak should hide ${key}`);
+    }
+    const review = skLevels.find(l => l.key === 'sk-review-after-fuenf');
+    ok(review, 'Slovak replacement fuenf review exists');
+    eq(review.modes.join(','), 'lesen,stellen');
+    eq(review.minuteSets.join(','), 'volle,halbe,viertel,fuenf');
   });
   test('English AM/PM review follows all AM/PM drills and stays English-only', () => {
     const deLevels = levelsForLanguage('de');
@@ -670,6 +718,16 @@ group('transitions between exercises', () => {
     eq(q.m, 40);
     eq(q.language, 'en');
     eq(q.parsed.fullWord, 'twenty to twelve');
+  });
+  test('makeQuestion stamps Slovak on word rendering', () => {
+    const level = { mode: 'wort-lesen', minuteSet: 'viertel', hour24: false };
+    const stream = [2/12, 0]; // 3:15
+    let i = 0;
+    const q = makeQuestion(level, () => stream[i++] ?? 0, 'sk');
+    eq(q.h, 3);
+    eq(q.m, 15);
+    eq(q.language, 'sk');
+    eq(q.parsed.fullWord, 'štvrť na štyri');
   });
   test('24h levels are PM-only — dh lands in 12..23 over many draws', () => {
     const level = LEVELS.find(l => l.hour24);
@@ -752,7 +810,9 @@ group('review levels', () => {
   test('review levels declare the expected mode set, no single scalar mode', () => {
     for (const r of LEVELS.filter(l => l.review)) {
       ok(!r.mode, `review level ${r.key} must not set .mode`);
-      const expected = r.languages && r.languages.includes('en') ? AMPM_MODES : CORE_MODES;
+      const expected = r.key === 'sk-review-after-fuenf'
+        ? ['lesen', 'stellen']
+        : r.languages && r.languages.includes('en') ? AMPM_MODES : CORE_MODES;
       eq(new Set(r.modes).size, expected.length);
       for (const m of expected) ok(r.modes.includes(m), `review ${r.key} missing ${m}`);
     }
@@ -832,21 +892,26 @@ group('localStorage persistence', () => {
     const en = recordMastery({}, 'lesen-volle', 8);
     saveMastery(de, 'de');
     saveMastery(en, 'en');
+    saveMastery(recordMastery({}, 'lesen-volle', 9), 'sk');
     eq(loadMastery('de')['lesen-volle'].tier, 3);
     eq(loadMastery('en')['lesen-volle'].tier, 1);
+    eq(loadMastery('sk')['lesen-volle'].tier, 2);
     eq(loadAllMastery().de['lesen-volle'].tier, 3);
     eq(loadAllMastery().en['lesen-volle'].tier, 1);
+    eq(loadAllMastery().sk['lesen-volle'].tier, 2);
   });
   test('resetMastery clears mastery and per-language level keys', () => {
     localStorage.setItem(MASTERY_KEY, JSON.stringify({ de: { 'lesen-volle': { tier: 1, best: 8, last: 8 } } }));
     localStorage.setItem(LEVEL_KEY, 'stellen-halbe');
     localStorage.setItem(levelStorageKey('de'), 'stellen-halbe');
     localStorage.setItem(levelStorageKey('en'), 'lesen-fuenf');
+    localStorage.setItem(levelStorageKey('sk'), 'lesen-viertel');
     resetMastery();
     eq(localStorage.getItem(MASTERY_KEY), null);
     eq(localStorage.getItem(LEVEL_KEY), null);
     eq(localStorage.getItem(levelStorageKey('de')), null);
     eq(localStorage.getItem(levelStorageKey('en')), null);
+    eq(localStorage.getItem(levelStorageKey('sk')), null);
   });
   test('mastery keyed by stable level key is independent per level', () => {
     let m = {};
@@ -867,6 +932,7 @@ group('localStorage persistence', () => {
   test('levelStorageKey is language-aware and normalizes unknown languages', () => {
     eq(levelStorageKey('de'), 'uhrzeit.level.de');
     eq(levelStorageKey('en'), 'uhrzeit.level.en');
+    eq(levelStorageKey('sk'), 'uhrzeit.level.sk');
     eq(levelStorageKey('fr'), 'uhrzeit.level.de');
   });
 });
