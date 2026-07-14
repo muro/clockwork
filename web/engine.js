@@ -117,8 +117,11 @@ function parseEnglishTime(h, m) {
   return { minute: null, hour: h, next, full: digital, fullWord: digital };
 }
 
+// Genitive hour names for "pol X" phrases. The series uses ordinals
+// ("pol druhej" = 1:30) except hour 1, where colloquial Slovak says
+// "pol jednej" (cardinal), not "pol prvej".
 const SK_HALF_HOUR_NAMES = {
-  1: 'prvej', 2: 'druhej', 3: 'tretej', 4: 'štvrtej',
+  1: 'jednej', 2: 'druhej', 3: 'tretej', 4: 'štvrtej',
   5: 'piatej', 6: 'šiestej', 7: 'siedmej', 8: 'ôsmej',
   9: 'deviatej', 10: 'desiatej', 11: 'jedenástej', 12: 'dvanástej',
 };
@@ -156,7 +159,9 @@ function parseSlovakTime(h, m) {
   switch (m) {
     case 0: return { minute: null, hour: h, next, full: `${h} ${slovakHourUnit(h)}`, fullWord: `${hourName(h, 'sk')} ${slovakHourUnit(h)}` };
     case 15: return { minute: 'štvrť na', hour: next, next, full: `štvrť na ${next}`, fullWord: `štvrť na ${hourName(next, 'sk')}` };
+    case 25: return { minute: 'o 5 minút pol', hour: next, next, full: `o 5 minút pol ${next}`, fullWord: `o päť minút pol ${SK_HALF_HOUR_NAMES[next]}` };
     case 30: return { minute: 'pol', hour: next, next, full: `pol ${next}`, fullWord: `pol ${SK_HALF_HOUR_NAMES[next]}` };
+    case 35: return { minute: 'pol a 5 minút', hour: next, next, full: `pol ${next} a 5 minút`, fullWord: `pol ${SK_HALF_HOUR_NAMES[next]} a päť minút` };
     case 45: return { minute: 'trištvrte na', hour: next, next, full: `trištvrte na ${next}`, fullWord: `trištvrte na ${hourName(next, 'sk')}` };
   }
   const minuteWord = SK_MINUTE_WORDS[m];

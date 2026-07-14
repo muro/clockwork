@@ -116,6 +116,13 @@ group('hourName & parseTime', () => {
     eq(parseTime(3, 30, 'sk').fullWord, 'pol štvrtej');
     eq(parseTime(3, 45, 'sk').fullWord, 'trištvrte na štyri');
   });
+  test('parseTime supports colloquial Slovak around the half hour', () => {
+    eq(parseTime(6, 25, 'sk').fullWord, 'o päť minút pol siedmej');
+    eq(parseTime(6, 35, 'sk').fullWord, 'pol siedmej a päť minút');
+    eq(parseTime(12, 25, 'sk').fullWord, 'o päť minút pol jednej');
+    eq(parseTime(12, 30, 'sk').fullWord, 'pol jednej');
+    eq(parseTime(12, 35, 'sk').fullWord, 'pol jednej a päť minút');
+  });
   test('parseTime(3, 30) → "halb vier" (advances hour)', () => {
     const p = parseTime(3, 30);
     eq(p.fullWord, 'halb vier'); eq(p.minute, 'halb'); eq(p.hour, 4);
@@ -519,6 +526,12 @@ group('exercise: wort-lesen', () => {
     built = buildWordOptions(q, { mode: 'wort-lesen', minuteSet: 'halbe', hour24: false }, 'sk');
     contains(built.options, 'pol štvrtej');
     contains(built.options, 'pol tretej');
+  });
+  test('Slovak 6:25 pairs both colloquial half-hour phrases as options', () => {
+    const q = { h: 6, m: 25, dh: 6, language: 'sk', parsed: parseTime(6, 25, 'sk') };
+    const { options } = buildWordOptions(q, { mode: 'wort-lesen', minuteSet: 'fuenf', hour24: false }, 'sk');
+    contains(options, 'o päť minút pol siedmej');
+    contains(options, 'pol siedmej a päť minút');
   });
   test('English 11:40 offers "twenty to twelve" with a past/to distractor', () => {
     const q = { h: 11, m: 40, dh: 11, language: 'en', parsed: parseTime(11, 40, 'en') };

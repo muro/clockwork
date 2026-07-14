@@ -254,13 +254,14 @@
     <h2>Workstreams</h2>
     <div class="grid">
       <article class="panel">
-        <h3>Language Support <span class="status">Complete</span></h3>
+        <h3>Language Support <span class="status">Mostly complete</span></h3>
         <ul>
           <li class="done">Add an in-app language selector for German and English.</li>
           <li class="done">Keep learning progress language-aware so word-based mastery does not carry across languages accidentally.</li>
           <li class="done">Move clock-word generation behind a language-aware phrase layer.</li>
           <li class="done">Add language-specific distractor rules, for example English forms such as "twenty to twelve" for 11:40.</li>
           <li class="done">Extend the browser tests to cover word options, phrase generation, progress storage, and the UI selector contract per language.</li>
+          <li>Consider Slovak word drills for :25/:35 — the engine now produces colloquial "o päť minút pol siedmej" / "pol siedmej a päť minút", but the 5-minute word levels stay hidden for Slovak because the other 5-minute marks (:05, :10, :20, :40, :50, :55) still read as long literal phrases.</li>
         </ul>
       </article>
       <article class="panel">
