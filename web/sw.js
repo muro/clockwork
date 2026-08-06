@@ -1,4 +1,4 @@
-const CACHE_NAME = 'clockwork-app-v4';
+const CACHE_NAME = 'clockwork-app-v5';
 
 const APP_SHELL = [
   './',
