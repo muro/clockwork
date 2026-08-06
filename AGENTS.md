@@ -17,7 +17,23 @@ python3 -m http.server 8765 --directory web
 
 `.claude/launch.json` configures the Claude Code preview server with the same command, on `:8765`.
 
-There is no test runner, no linter, and no CI. Tests are in-browser assertions in `web/tests.html` that load `engine.js` via a `<script>` tag and run a tiny harness (`group`, `test`, `eq`, `ok`). The page title updates to `N ✓ / M ✗ — Uhrzeit Tests` so a headless check can grep `#summary`.
+There is no linter and no CI, and the primary tests use no test runner: they are in-browser assertions in `web/tests.html` that load `engine.js` via a `<script>` tag and run a tiny harness (`group`, `test`, `eq`, `ok`). The page title updates to `N ✓ / M ✗ — Uhrzeit Tests` so a headless check can grep `#summary`. This is the primary test suite — keep engine behavior covered here. (An optional Playwright visual-regression suite exists too; see below. It stays out of the app's zero-build path.)
+
+### Optional visual-regression tests (Playwright)
+
+Separate, opt-in tooling that pixel-diffs the rendered UI against committed baselines. **The app itself stays zero-build** — this only runs when you invoke it, and nothing in `web/` depends on it.
+
+```sh
+npm install                  # one-time: installs @playwright/test (no browser download)
+npm run test:visual          # run against committed baselines in visual/*-snapshots/
+npm run test:visual:update   # regenerate baselines after an intentional UI change
+```
+
+- Uses the machine's installed Google Chrome (`channel: 'chrome'` in `playwright.config.js`), so there is no ~300 MB Chromium download. Baselines are therefore per-machine/per-Chrome; if Chrome updates and nudges antialiasing, regenerate them.
+- Specs live in `visual/`; baseline PNGs (`visual/*-snapshots/`) **are committed** — they're the reference. `node_modules/`, `test-results/`, and reports are git-ignored.
+- `clock.spec.js` is a focused clock-geometry crop; `coverage.spec.js` is a small **covering set** of whole-screen shots that mixes operation × precision × theme × language so each value appears at least once without the full cross-product. Language/level/theme are forced via `localStorage` (`uhrzeit.language`, `uhrzeit.level.<lang>` = the level *key*, `uhrzeit.theme` = `koralle`/`abend`) set in `addInitScript` before load.
+- The app draws a random question on load, so specs pin `Math.random` via `page.addInitScript` before navigation. `clock.spec.js` uses a constant (clean, known 3:00) for geometry; `coverage.spec.js` uses a seeded PRNG so the distractor generators fill a realistic 4-option grid (a constant collapses them to 2–3). The clock root carries `data-testid="clock"` as a stable selector.
+- Comparisons use an **absolute** `maxDiffPixels` budget, not a ratio: a ratio scales with image area, so on the small isolated clock image it silently tolerated a whole hand moving. Keep it absolute.
 
 Regenerate the app icon (only when the icon design changes — the PNGs are committed):
 

@@ -1,0 +1,12 @@
+{
+  "name": "clockwork-visual-tests",
+  "private": true,
+  "description": "Optional Playwright visual-regression tests for the Uhrzeit Lernen app. The app itself stays zero-build; this tooling only runs when you invoke it.",
+  "scripts": {
+    "test:visual": "playwright test",
+    "test:visual:update": "playwright test --update-snapshots"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1"
+  }
+}

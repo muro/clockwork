@@ -1,1 +1,9 @@
 .DS_Store
+
+# Playwright visual-regression tooling (optional; not part of the zero-build app).
+# Baseline snapshots under visual/*-snapshots/ ARE committed — they're the reference.
+node_modules/
+/test-results/
+/playwright-report/
+/blob-report/
+/.playwright/
