@@ -30,4 +30,14 @@ function pinRuntime(opts) {
   if (opts && opts.theme) localStorage.setItem('uhrzeit.theme', opts.theme);
 }
 
-module.exports = { pinRuntime };
+// Navigate to the app with a unique query so the browser's HTTP cache can never
+// serve a previous build. Blocking the service worker isn't enough on its own —
+// Chrome's disk cache will otherwise hand back the last index.html and the suite
+// renders one edit behind. Every asset is re-fetched fresh for the run.
+let _n = 0;
+async function gotoApp(page, path = '/index.html') {
+  const sep = path.includes('?') ? '&' : '?';
+  await page.goto(`${path}${sep}cb=${Date.now()}-${_n++}`);
+}
+
+module.exports = { pinRuntime, gotoApp };

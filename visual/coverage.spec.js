@@ -1,6 +1,6 @@
 // @ts-check
 const { test, expect } = require('@playwright/test');
-const { pinRuntime } = require('./fixtures');
+const { pinRuntime, gotoApp } = require('./fixtures');
 
 // Whole-screen visual coverage across four dimensions — operation (the six core
 // modes + the English AM/PM drill), precision (full / half / quarter / 5-min /
@@ -36,7 +36,7 @@ test.describe('operation × precision × theme × language coverage', () => {
     test(`${s.op}  ·  ${s.id}`, async ({ page }) => {
       await page.addInitScript(pinRuntime, { lang: s.lang, level: s.level, theme: s.theme });
 
-      await page.goto('/index.html');
+      await gotoApp(page);
       // The "Level NN / MM" header is present on every screen once mounted —
       // works for the no-clock modes (word/AM/PM) where getByTestId('clock')
       // wouldn't exist.

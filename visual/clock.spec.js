@@ -1,5 +1,6 @@
 // @ts-check
 const { test, expect } = require('@playwright/test');
+const { gotoApp } = require('./fixtures');
 
 // Visual-regression smoke test for the clock rendering.
 //
@@ -23,7 +24,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 async function gotoStableApp(page) {
-  await page.goto('/index.html');
+  await gotoApp(page);
   // The JSX is transformed by Babel at runtime, so wait for the app to mount.
   await expect(page.getByTestId('clock')).toBeVisible();
   // Web fonts fall back to system fonts (no CDN), but await layout settling.

@@ -1,6 +1,6 @@
 // @ts-check
 const { test, expect } = require('@playwright/test');
-const { pinRuntime } = require('./fixtures');
+const { pinRuntime, gotoApp } = require('./fixtures');
 
 // The in-app About / Support sheet, opened from the header logo, guarded in
 // both themes (the card, accent button, and dandelion watermark differ between
@@ -13,7 +13,7 @@ const themes = [
 for (const t of themes) {
   test(`about sheet · ${t.theme}`, async ({ page }) => {
     await page.addInitScript(pinRuntime, { lang: 'de', theme: t.theme });
-    await page.goto('/index.html');
+    await gotoApp(page);
 
     await page.getByRole('button', { name: 'About & support' }).click();
     await expect(page.getByRole('dialog')).toBeVisible();

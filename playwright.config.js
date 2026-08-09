@@ -36,6 +36,11 @@ module.exports = defineConfig({
   use: {
     channel: 'chrome',
     baseURL: 'http://localhost:8765',
+    // Block the app's service worker. It cache-first-serves index.html, so once
+    // it has cached a build it keeps returning that stale copy across runs —
+    // which would silently test old markup against freshly-updated baselines.
+    // Blocking it forces every navigation to fetch the current file from disk.
+    serviceWorkers: 'block',
     // Fixed, phone-first viewport so the dvh/safe-area layout renders
     // identically every run. deviceScaleFactor 1 keeps the PNGs small and
     // antialiasing predictable.

@@ -1480,13 +1480,13 @@ function AboutSheet({ c, accent, dark, onClose }) {
         background: c.paper, color: c.ink, border: `1px solid ${g.edge}`,
         boxShadow: `inset 0 1px 0 ${g.shine}, 0 12px 44px -8px rgba(0,0,0,0.45)`,
         animation: 'sheetIn 0.28s cubic-bezier(.34,1.2,.64,1) both' }}>
-      {/* Success-flower watermark behind the content. The yellow bloom is low
-          contrast on the cream light card, so it needs far more opacity there
-          than on the dark card. Nudged up so it doesn't read bottom-heavy
-          under the opaque support button. */}
+      {/* Success-flower watermark, centred in the dialog. The bright-yellow
+          bloom reads lower-contrast on the cream light card than on the dark
+          one, so light carries slightly more opacity; both stay faded enough
+          to keep the text legible over the petals. */}
       <img src="dandelion_single.png" alt="" aria-hidden="true" decoding="async"
-        style={{ position: 'absolute', left: '50%', top: '44%', width: 264, height: 264,
-          transform: 'translate(-50%, -50%)', opacity: dark ? 0.12 : 0.32, pointerEvents: 'none' }} />
+        style={{ position: 'absolute', left: '50%', top: '50%', width: 264, height: 264,
+          transform: 'translate(-50%, -50%)', opacity: dark ? 0.12 : 0.20, pointerEvents: 'none' }} />
       <div style={{ position: 'relative' }}>
         <div style={{ fontFamily: 'Nunito, sans-serif', fontWeight: 800, fontSize: 20,
           letterSpacing: '-0.01em' }}>Uhrzeit Lernen</div>
