@@ -225,6 +225,37 @@ group('digitalFromQ / wordFromQ', () => {
   });
 });
 
+group('time-shift arithmetic', () => {
+  test('shiftTime moves forward and back while retaining minute precision', () => {
+    eq(shiftTime(2, 30, 120), { h: 4, m: 30 });
+    eq(shiftTime(3, 10, 17), { h: 3, m: 27 });
+    eq(shiftTime(3, 10, -17), { h: 2, m: 53 });
+  });
+  test('shiftTime wraps through twelve in both directions', () => {
+    eq(shiftTime(11, 45, 30), { h: 12, m: 15 });
+    eq(shiftTime(12, 10, -17), { h: 11, m: 53 });
+    ok(shiftCrossesTwelve(11, 45, 30));
+    ok(shiftCrossesTwelve(12, 10, -17));
+    ok(!shiftCrossesTwelve(3, 10, 17));
+  });
+  test('timeShiftInstruction is natural in every learning language', () => {
+    eq(timeShiftInstruction({ direction: 'later', hours: 2, minutes: 0 }, 'de'), '2 Stunden später');
+    eq(timeShiftInstruction({ direction: 'earlier', hours: 1, minutes: 17 }, 'en'), '1 hour and 17 minutes earlier');
+    eq(timeShiftInstruction({ direction: 'later', hours: 2, minutes: 0 }, 'sk'), 'O 2 hodiny neskôr');
+  });
+  test('a time-shift setting prompt keeps the source separate from the scored result', () => {
+    const q = {
+      h: 5, m: 17, dh: 5, sourceH: 3, sourceM: 0,
+      shift: { direction: 'later', hours: 2, minutes: 17 }, language: 'de',
+      parsed: parseTime(5, 17, 'de'),
+    };
+    const source = timeShiftSourceQ(q);
+    eq(digitalFromQ(source), '3:00');
+    eq(digitalFromQ(q), '5:17');
+    eq(source.parsed.fullWord, 'drei Uhr');
+  });
+});
+
 group('English AM/PM helpers', () => {
   test('AM/PM formatting handles morning, evening, noon, and midnight', () => {
     eq(ampmTimeFromQ({ dh: 8,  m: 30 }), '8:30 a.m.');
@@ -339,16 +370,15 @@ group('recordMastery', () => {
 });
 
 group('level progress layout', () => {
-  test('level track keeps two rows for the current German-size curriculum at app width', () => {
-    eq(levelTrackRowPlan(levelsForLanguage('de').length, 420).rowCount, 2);
+  test('chapter groups partition the German curriculum by learning topic', () => {
+    const groups = chapterGroupsForLevels(levelsForLanguage('de'));
+    eq(groups.map(g => g.key), ['basics', 'quarters', 'five-minute', 'precision', 'clock-shift', 'time-math']);
+    eq(groups.map(g => g.levels.length), [9, 7, 7, 5, 6, 12]);
+    eq(groups.flatMap(g => g.levels).map(l => l.key), levelsForLanguage('de').map(l => l.key));
   });
-  test('level track adds another row when English-only levels crowd the snake', () => {
-    ok(levelTrackRowPlan(levelsForLanguage('en').length, 420).rowCount > 2);
-  });
-  test('level track leaves enough side inset for U-turn bends', () => {
-    const plan = levelTrackRowPlan(levelsForLanguage('en').length, 420);
-    ok(plan.inset >= plan.rowSpacing / 2 + 4,
-      `inset ${plan.inset} should contain turn radius ${plan.rowSpacing / 2}`);
+  test('chapter rows retain their topic when language-specific drills vary', () => {
+    eq(chapterGroupsForLevels(levelsForLanguage('en')).map(g => g.levels.length), [9, 7, 7, 10, 6, 12]);
+    eq(chapterGroupsForLevels(levelsForLanguage('sk')).map(g => g.levels.length), [9, 7, 3, 5, 6, 12]);
   });
 });
 
@@ -597,6 +627,102 @@ group('exercise: stellen / wort-stellen snap round-trip', () => {
 });
 
 // ─────────────────────────────────────────────────────────────
+// EXERCISE TYPE: TIME SHIFT (clock + offset → chips)
+// The source time and result intentionally live on separate fields: h/m are
+// always the scored result, while sourceH/sourceM are what the clock shows.
+// ─────────────────────────────────────────────────────────────
+group('exercise: time shift', () => {
+  test('every arithmetic level generates only questions in its declared boundary stage', () => {
+    const shiftLevels = LEVELS.filter(l => l.timeShift);
+    eq(shiftLevels.length, 18);
+    for (const level of shiftLevels) {
+      for (let i = 0; i < 80; i++) {
+        const q = makeQuestion(level);
+        const signed = (q.shift.direction === 'earlier' ? -1 : 1) *
+          (q.shift.hours * 60 + q.shift.minutes);
+        const start = (q.sourceH % 12) * 60 + q.sourceM;
+        const crossesHour = Math.floor((start + signed) / 60) !== Math.floor(start / 60);
+        const crossesTwelve = shiftCrossesTwelve(q.sourceH, q.sourceM, signed);
+        if (level.timeShift.boundary === 'same-hour') ok(!crossesHour, `${level.key} crossed an hour`);
+        if (level.timeShift.boundary === 'cross-hour') ok(crossesHour && !crossesTwelve, `${level.key} boundary mismatch`);
+        if (level.timeShift.boundary === 'cross-twelve') ok(crossesTwelve, `${level.key} did not cross twelve`);
+        if (level.timeShift.boundary === 'not-twelve') ok(!crossesTwelve, `${level.key} crossed twelve too early`);
+      }
+    }
+  });
+  test('same-hour minute arithmetic includes familiar clock marks such as :00 and :30', () => {
+    const level = LEVELS.find(l => l.key === 'shift-minutes-later-same-hour');
+    const sourceMinutes = new Set(timeShiftCandidates(level).map(c => c.sourceM));
+    for (const m of [0, 5, 15, 30, 45, 52]) ok(sourceMinutes.has(m), `source minute ${m} missing`);
+  });
+  test('chips include the calculated result and stay four unique choices', () => {
+    for (const level of LEVELS.filter(l => l.timeShift && modeView(l.mode || l.modes?.[0]).pickOption)) {
+      for (let i = 0; i < 30; i++) {
+        const q = makeQuestion(level);
+        if (!modeView(q.mode).pickOption) continue;
+        const { options } = buildTimeShiftOptions(q, level);
+        eq(options.length, 4, `${level.key} option count`);
+        eq(new Set(options).size, 4, `${level.key} duplicate options`);
+        contains(options, textFromQ(q, modeView(q.mode).answerKind), `${level.key} result`);
+      }
+    }
+  });
+  test('half and quarter arithmetic uses phrase chips only after phrase learning', () => {
+    const level = LEVELS.find(l => l.key === 'shift-phrases-later');
+    const q = {
+      h: 4, m: 30, dh: 4, sourceH: 2, sourceM: 30,
+      mode: level.mode, language: 'de', parsed: parseTime(4, 30),
+      shift: { direction: 'later', hours: 2, minutes: 0 },
+    };
+    const { options } = buildTimeShiftOptions(q, level);
+    contains(options, 'halb fünf', '2:30 + 2 hours should offer halb fünf');
+  });
+  test('clock shifting keeps the source clock and target clock as distinct semantic roles', () => {
+    const level = LEVELS.find(l => l.key === 'shift-clock-hours-later');
+    ok(level, 'clock-to-clock shift level exists');
+    const view = modeView(level.mode);
+    eq(view.promptKind, 'clock');
+    eq(view.answerKind, 'clockTarget');
+    ok(view.setClock, 'clock target is interactive');
+    ok(!view.confirmClock, 'clock target submits automatically like the other setting drills');
+    for (let i = 0; i < 60; i++) {
+      const q = makeQuestion(level);
+      eq(shiftTime(q.sourceH, q.sourceM,
+        (q.shift.direction === 'earlier' ? -1 : 1) * (q.shift.hours * 60 + q.shift.minutes)),
+        { h: q.h, m: q.m });
+    }
+  });
+  test('digital-source arithmetic ends in digital result chips', () => {
+    const level = LEVELS.find(l => l.key === 'shift-digital-result');
+    ok(level, 'digital-source arithmetic level exists');
+    const view = modeView(level.mode);
+    eq(view.promptKind, 'digitalSource');
+    eq(view.answerKind, 'digital');
+    ok(view.pickOption, 'digital result is selected from chips');
+    for (let i = 0; i < 60; i++) {
+      const q = makeQuestion(level);
+      eq(digitalFromQ(timeShiftSourceQ(q)), `${q.sourceH}:${String(q.sourceM).padStart(2, '0')}`);
+      const { options } = buildTimeShiftOptions(q, level);
+      contains(options, digitalFromQ(q), 'calculated digital result is offered');
+    }
+  });
+  test('time-math review mixes analogue and digital prompts with phrase and digital chips', () => {
+    const review = LEVELS.find(l => l.key === 'review-after-time-math');
+    ok(review, 'time-math review exists');
+    eq(review.modes.join(','), TIME_SHIFT_MODES.join(','));
+    const seen = new Set();
+    for (let i = 0; i < 500; i++) seen.add(makeQuestion(review).mode);
+    eq(seen.size, TIME_SHIFT_MODES.length, `only saw modes: ${[...seen].join(',')}`);
+  });
+  test('clock-shift review remains on the editable source clock', () => {
+    const review = LEVELS.find(l => l.key === 'review-after-clock-shift');
+    ok(review, 'clock-shift review exists');
+    eq(review.modes.join(','), CLOCK_SHIFT_MODES.join(','));
+    for (let i = 0; i < 100; i++) eq(makeQuestion(review).mode, 'time-shift-clock');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
 // TRANSITIONS BETWEEN EXERCISE TYPES
 // ─────────────────────────────────────────────────────────────
 group('transitions between exercises', () => {
@@ -607,7 +733,7 @@ group('transitions between exercises', () => {
     }
   });
   test('every modality is a known kind', () => {
-    const kinds = new Set(['clock', 'digital', 'word', 'daypartTime', 'ampmTime', 'digital24']);
+    const kinds = new Set(['clock', 'clockTarget', 'digital', 'digitalSource', 'word', 'daypartTime', 'ampmTime', 'digital24']);
     for (const [mode, spec] of Object.entries(MODE_SPECS)) {
       ok(kinds.has(spec.prompt), `mode "${mode}" prompt=${spec.prompt} unknown`);
       ok(kinds.has(spec.answer), `mode "${mode}" answer=${spec.answer} unknown`);
@@ -632,10 +758,10 @@ group('transitions between exercises', () => {
       ok(v, `modeView(${m}) returned null`);
       ok(typeof v.promptKind === 'string' && typeof v.answerKind === 'string',
         `modeView(${m}) missing promptKind/answerKind`);
-      eq(v.showClock, v.promptKind === 'clock' || v.answerKind === 'clock',
+      eq(v.showClock, v.promptKind === 'clock' || v.setClock,
         `modeView(${m}).showClock inconsistent with kinds`);
-      eq(v.pickOption, v.answerKind !== 'clock',
-        `modeView(${m}).pickOption inconsistent with answerKind`);
+      eq(v.pickOption, !v.setClock,
+        `modeView(${m}).pickOption inconsistent with answer interaction`);
     }
   });
   test('LEVELS covers every mode across learning and review levels', () => {
@@ -705,7 +831,14 @@ group('transitions between exercises', () => {
       const q = makeQuestion(level);
       ok(q.h >= 1 && q.h <= 12, `h in range (${level.title})`);
       const mins = effectiveMinutes(level);
-      ok(mins.includes(q.m), `m=${q.m} in effectiveMinutes (${level.title})`);
+      if (level.timeShift) {
+        ok(mins.includes(q.sourceM), `source m=${q.sourceM} in effectiveMinutes (${level.title})`);
+        eq(shiftTime(q.sourceH, q.sourceM,
+          (q.shift.direction === 'earlier' ? -1 : 1) * (q.shift.hours * 60 + q.shift.minutes)),
+          { h: q.h, m: q.m }, `target matches shift (${level.title})`);
+      } else {
+        ok(mins.includes(q.m), `m=${q.m} in effectiveMinutes (${level.title})`);
+      }
       eq(q.parsed.fullWord, parseTime(q.h, q.m).fullWord, `parsed consistent (${level.title})`);
       if (level.hour24) ok(q.dh >= 12 && q.dh <= 23, `24h dh PM-only (${level.title})`);
     }
@@ -757,12 +890,14 @@ group('transitions between exercises', () => {
     eq(LEVELS[3].mode, 'wort-lesen');
     eq(LEVELS[4].mode, 'wort-stellen');
   });
-  test('minute-precision levels remain the very last two (lesen then stellen)', () => {
-    const n = LEVELS.length;
-    const lesen   = LEVELS[n - 2];
-    const stellen = LEVELS[n - 1];
+  test('minute precision precedes the delayed 24h review before arithmetic begins', () => {
+    const firstShift = LEVELS.findIndex(l => l.timeShift);
+    const lesen   = LEVELS[firstShift - 3];
+    const stellen = LEVELS[firstShift - 2];
+    const review  = LEVELS[firstShift - 1];
     eq(lesen.minuteSet, 'minute');   eq(lesen.mode,   'lesen');
     eq(stellen.minuteSet, 'minute'); eq(stellen.mode, 'stellen');
+    eq(review.key, 'review-after-24h');
     ok(!LEVELS.some(l => l.minuteSet === 'minute' && l.mode && l.mode.startsWith('wort')),
       'no wort-* levels at minute precision');
   });
@@ -778,7 +913,7 @@ group('transitions between exercises', () => {
 
 group('review levels', () => {
   test('there are exactly three core reviews — after halbe, after viertel, after fuenf', () => {
-    const reviews = LEVELS.filter(l => l.review && !l.languages);
+    const reviews = LEVELS.filter(l => l.review && l.modes?.join(',') === CORE_MODES.join(','));
     eq(reviews.length, 3, `got ${reviews.length} review levels`);
     eq(reviews.map(r => r.key).join(','),
        'review-after-halbe,review-after-viertel,review-after-fuenf');
@@ -825,9 +960,31 @@ group('review levels', () => {
       ok(!r.mode, `review level ${r.key} must not set .mode`);
       const expected = r.key === 'sk-review-after-fuenf'
         ? ['lesen', 'stellen']
+        : r.key === 'review-after-24h' ? HOUR24_MODES
+        : r.key === 'review-after-clock-shift' ? CLOCK_SHIFT_MODES
+        : r.key === 'review-after-time-math' ? TIME_SHIFT_MODES
         : r.languages && r.languages.includes('en') ? AMPM_MODES : CORE_MODES;
       eq(new Set(r.modes).size, expected.length);
       for (const m of expected) ok(r.modes.includes(m), `review ${r.key} missing ${m}`);
+    }
+  });
+  test('24h review stays within the unambiguous read/set modalities', () => {
+    const review = LEVELS.find(l => l.key === 'review-after-24h');
+    ok(review, '24h review exists');
+    eq(review.hour24, true);
+    eq(review.modes.join(','), HOUR24_MODES.join(','));
+    for (let i = 0; i < 80; i++) {
+      const q = makeQuestion(review);
+      ok(q.dh >= 12 && q.dh <= 23, `24h review needs PM hour, got ${q.dh}`);
+    }
+  });
+  test('24h review closes the precision chapter after minute-precision setting', () => {
+    for (const language of ['de', 'en', 'sk']) {
+      const levels = levelsForLanguage(language);
+      const reviewIndex = levels.findIndex(l => l.key === 'review-after-24h');
+      ok(reviewIndex > 0, `${language} 24h review exists`);
+      eq(levels[reviewIndex - 1].key, 'stellen-minute',
+        `${language} should finish precision before the delayed 24h review`);
     }
   });
   test('makeQuestion on the AM/PM review mixes all AM/PM modes', () => {
@@ -1050,19 +1207,41 @@ group('app UI language selector contract', () => {
     contains([xhr.responseText.includes('minHeight: 44')], true,
       'language selector minimum tap height');
   });
-  test('index.html uses the dynamic level progress row plan', () => {
+  test('index.html renders level progress as a chapter-themed snake', () => {
     const xhr = new XMLHttpRequest();
     xhr.open('GET', `index.html?cache=${Date.now()}`, false);
     xhr.send();
     eq(xhr.status, 200);
-    contains([xhr.responseText.includes('levelTrackRowPlan(')], true,
-      'level progress bar delegates row count to layout helper');
-    contains([xhr.responseText.includes('progressPathD')], true,
-      'level progress bar draws fill to the current level path');
-    ok(!xhr.responseText.includes('const rowY = [24, 24 + rowSpacing]'),
-      'level progress bar should not hard-code exactly two rows');
-    ok(!xhr.responseText.includes('strokeDashoffset={1 - levelProgress}'),
-      'level progress fill should not use proportional path dash offset');
+    contains([xhr.responseText.includes('chapterGroupsForLevels(levels)')], true,
+      'level progress bar groups visible levels into curriculum chapters');
+    contains([xhr.responseText.includes('<ChapterGlyph chapter={chapter}')], true,
+      'every chapter row starts with a visual glyph');
+    contains([xhr.responseText.includes('const progressPathD = routePathTo(target)')], true,
+      'level progress bar fills one continuous route to the current level');
+    contains([xhr.responseText.includes('const forward = row % 2 === 0')], true,
+      'chapter rows alternate direction to form a snake');
+    contains([xhr.responseText.includes('const CHAPTER_COPY =')], true,
+      'chapter glyphs retain localized accessibility labels');
+  });
+  test('clock-shift exercises retain the source as ghost hands after movement', () => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', `index.html?cache=${Date.now()}`, false);
+    xhr.send();
+    eq(xhr.status, 200);
+    contains([xhr.responseText.includes("hasMoved: false")], true,
+      'clock-shift state starts without a ghost');
+    contains([xhr.responseText.includes("if (isClockShiftSet()) S.hasMoved = true; S.activeHand = h; refresh();")], true,
+      'picking up a hand reveals the source reference before it moves');
+    contains([xhr.responseText.includes("ghostH={isClockShiftSet && S.hasMoved ? S.question.sourceH : null}")], true,
+      'source hour hand is passed to the clock as a ghost');
+    contains([xhr.responseText.includes("color={theme.hourHand || '#1a1a1a'} angle={ghostHourAng}")], true,
+      'ghost hour hand keeps the real hour-hand colour');
+    contains([xhr.responseText.includes("color={theme.minHand || '#e8590c'} angle={ghostMinAng}")], true,
+      'ghost minute hand keeps the real minute-hand colour');
+    contains([xhr.responseText.includes('if (isSet()) scheduleAutoSubmit();')], true,
+      'clock-shift exercises use the same automatic check as other setting drills');
+    contains([xhr.responseText.includes('view.confirmClock && !S.locked')], false,
+      'clock-shift exercises do not add a separate check button');
   });
   test('index.html has natural Slovak review copy', () => {
     const xhr = new XMLHttpRequest();
@@ -1124,6 +1303,14 @@ group('offline PWA shell', () => {
     contains([sw.includes('clients.claim')], true, 'service worker claims open app tabs');
     contains([sw.includes("cache: 'reload'")], true, 'service worker precache bypasses stale HTTP cache');
     ok(!sw.includes('https://'), 'service worker shell cache should be self-contained');
+  });
+
+  test('service worker respects cache-busting query strings for fresh checks', () => {
+    const sw = fetchText('sw.js');
+    contains([sw.includes('return caches.match(request);')], true,
+      'a queried engine.js request must not be satisfied by an older shell asset');
+    ok(!sw.includes('ignoreSearch: true'),
+      'cache-busting query strings must remain distinct from app-shell assets');
   });
 });
 

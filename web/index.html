@@ -155,7 +155,7 @@ function drawSpitz(w, L) {
   } />;
 }
 
-function Hand({ width, length, color, angle, transition, zIndex = 2 }) {
+function Hand({ width, length, color, angle, transition, zIndex = 2, opacity = 1 }) {
   // SVG is centred on the wrapper; viewBox extends far enough to show any
   // shape's overhang (disc, arrow tip). overflow:visible keeps it lenient.
   const pad = Math.max(width * 4, 14);
@@ -165,7 +165,7 @@ function Hand({ width, length, color, angle, transition, zIndex = 2 }) {
       position: 'absolute', left: '50%', top: '50%',
       width: 0, height: 0, transformOrigin: '0 0',
       transform: `rotate(${angle}deg)`, transition,
-      pointerEvents: 'none', zIndex,
+      pointerEvents: 'none', zIndex, opacity,
     }}>
       <svg
         width={side} height={side}
@@ -395,6 +395,7 @@ const EN_LEVEL_COPY = {
   "review-after-fuenf": ["Review · through 5-minute times", "Everything learned so far"],
   "lesen-fuenf-24h": ["24-hour times", "Read the clock · 24h"],
   "stellen-fuenf-24h": ["Set 24-hour times", "Set the clock · 24h"],
+  "review-after-24h": ["Review · 24-hour time", "Read and set 24-hour times"],
   "en-daypart-ampm": ["Dayparts to AM/PM", "Morning, noon, night → a.m./p.m."],
   "en-ampm-daypart": ["AM/PM to dayparts", "a.m./p.m. → morning, evening, night"],
   "en-digital24-ampm": ["24h to AM/PM", "20:30 → 8:30 p.m."],
@@ -402,6 +403,24 @@ const EN_LEVEL_COPY = {
   "en-review-ampm": ["Review · AM/PM", "Dayparts and 24h mixed"],
   "lesen-minute": ["Minute precision", "Read the clock · every minute"],
   "stellen-minute": ["Set minute precision", "Set the clock · every minute"],
+  "shift-clock-hours-later": ["Move the clock forward", "Whole hours later"],
+  "shift-clock-hours-earlier": ["Move the clock back", "Whole hours earlier"],
+  "shift-clock-minutes-same-hour": ["Move the minutes", "Stay within the hour"],
+  "shift-clock-minutes-cross-hour": ["Across the hour", "Move the hands onward"],
+  "shift-clock-through-twelve": ["Across twelve", "The clock keeps going"],
+  "review-after-clock-shift": ["Review · move the clock", "Set it later and earlier"],
+  "shift-hours-later": ["Hours later", "Count forward in whole hours"],
+  "shift-hours-earlier": ["Hours earlier", "Count back in whole hours"],
+  "shift-phrases-later": ["Halves & quarters later", "Work it out · choose the phrase"],
+  "shift-phrases-earlier": ["Halves & quarters earlier", "Work it out · choose the phrase"],
+  "shift-minutes-later-same-hour": ["Minutes later", "Stay within the hour"],
+  "shift-minutes-earlier-same-hour": ["Minutes earlier", "Stay within the hour"],
+  "shift-minutes-later-cross-hour": ["Across the hour · later", "Carry the minutes forward"],
+  "shift-minutes-earlier-cross-hour": ["Across the hour · earlier", "Carry the minutes back"],
+  "shift-hours-minutes": ["Hours and minutes", "Work forward and back"],
+  "shift-through-twelve": ["Across twelve", "The clock keeps going"],
+  "shift-digital-result": ["Digital time maths", "See the time · choose the result"],
+  "review-after-time-math": ["Review · time maths", "Analogue and digital times"],
 };
 const SK_LEVEL_COPY = {
   "lesen-volle": ["Celé hodiny", "Čítaj hodiny · :00"],
@@ -430,8 +449,41 @@ const SK_LEVEL_COPY = {
   "sk-review-after-fuenf": ["Opakovanie · po 5 minút", "Čítanie a nastavovanie hodín"],
   "lesen-fuenf-24h": ["24-hodinový čas", "Čítaj hodiny · 24h"],
   "stellen-fuenf-24h": ["Nastav 24-hodinový čas", "Nastav hodiny · 24h"],
+  "review-after-24h": ["Opakovanie · 24 hodín", "Čítaj a nastavuj 24-hodinový čas"],
   "lesen-minute": ["Presne na minútu", "Čítaj hodiny · každá minúta"],
   "stellen-minute": ["Nastav presne na minútu", "Nastav hodiny · každá minúta"],
+  "shift-clock-hours-later": ["Posuň hodiny dopredu", "Celé hodiny neskôr"],
+  "shift-clock-hours-earlier": ["Posuň hodiny späť", "Celé hodiny skôr"],
+  "shift-clock-minutes-same-hour": ["Posuň minúty", "Zostaň v tej istej hodine"],
+  "shift-clock-minutes-cross-hour": ["Cez hodinu", "Posúvaj ručičky ďalej"],
+  "shift-clock-through-twelve": ["Cez dvanástu", "Hodiny idú ďalej"],
+  "review-after-clock-shift": ["Opakovanie · posuň hodiny", "Nastav neskôr aj skôr"],
+  "shift-hours-later": ["Hodiny neskôr", "Počítaj dopredu po celých hodinách"],
+  "shift-hours-earlier": ["Hodiny skôr", "Počítaj dozadu po celých hodinách"],
+  "shift-phrases-later": ["Pol a štvrť neskôr", "Vypočítaj · vyber vetu"],
+  "shift-phrases-earlier": ["Pol a štvrť skôr", "Vypočítaj · vyber vetu"],
+  "shift-minutes-later-same-hour": ["Minúty neskôr", "Zostaň v tej istej hodine"],
+  "shift-minutes-earlier-same-hour": ["Minúty skôr", "Zostaň v tej istej hodine"],
+  "shift-minutes-later-cross-hour": ["Cez hodinu · neskôr", "Pripočítaj minúty"],
+  "shift-minutes-earlier-cross-hour": ["Cez hodinu · skôr", "Odpočítaj minúty"],
+  "shift-hours-minutes": ["Hodiny a minúty", "Počítaj dopredu aj dozadu"],
+  "shift-through-twelve": ["Cez dvanástu", "Hodiny idú ďalej"],
+  "shift-digital-result": ["Počítaj digitálny čas", "Pozri čas · vyber výsledok"],
+  "review-after-time-math": ["Opakovanie · počítanie času", "Analógové aj digitálne časy"],
+};
+const CHAPTER_COPY = {
+  de: {
+    basics: 'Grundlagen', quarters: 'Viertelstunden', 'five-minute': '5-Minuten',
+    precision: 'Genau & 24h', 'clock-shift': 'Uhr verschieben', 'time-math': 'Zeitrechnen', other: 'Weitere Übungen',
+  },
+  en: {
+    basics: 'Foundations', quarters: 'Quarter hours', 'five-minute': '5-minute times',
+    precision: 'Precision & 24h', 'clock-shift': 'Move the clock', 'time-math': 'Time maths', other: 'More practice',
+  },
+  sk: {
+    basics: 'Základy', quarters: 'Štvrťhodiny', 'five-minute': '5-minútové časy',
+    precision: 'Presne & 24h', 'clock-shift': 'Posuň hodiny', 'time-math': 'Počítanie času', other: 'Ďalšie cvičenia',
+  },
 };
 function levelCopy(level, language) {
   const lang = normalizeLanguage(language);
@@ -439,6 +491,10 @@ function levelCopy(level, language) {
   if (!source) return { title: level.title, sub: level.sub };
   const copy = source[level.key];
   return copy ? { title: copy[0], sub: copy[1] } : { title: level.title, sub: level.sub };
+}
+function chapterCopy(chapter, language) {
+  const lang = normalizeLanguage(language);
+  return CHAPTER_COPY[lang]?.[chapter.key] || CHAPTER_COPY.de[chapter.key] || chapter.key;
 }
 
 function useLanguage() {
@@ -519,6 +575,7 @@ function useClockGame({ levelId = 0, levels = LEVELS, language = DEFAULT_LANGUAG
   if (!ref.current) ref.current = {
     question: null, selected: null, options: [],
     setH: 12, setM: 0, activeHand: "minute",
+    hasMoved: false,
     locked: false, wasCorrect: false, feedback: null, feedbackKind: null,
     score: 0, streak: 0, round: [], qIndex: 0, complete: false, lastMilestone: 0,
     levelId, roundN,
@@ -531,23 +588,29 @@ function useClockGame({ levelId = 0, levels = LEVELS, language = DEFAULT_LANGUAG
   // *current question*, not the level. Plain levels pre-stamp q.mode anyway.
   const qMode = () => S.question?.mode || level.mode;
   // Modes where the user manipulates the clock hands (vs picks an option).
-  const isSet  = () => modeView(qMode())?.answerKind === 'clock';
+  const isSet  = () => modeView(qMode())?.setClock;
+  const isClockShiftSet = () => S.question?.shift && modeView(qMode())?.answerKind === 'clockTarget';
 
   const newQuestion = () => {
     clearTimeout(S.autoSubmitTimer); S.autoSubmitTimer = null;
     S.question = makeQuestion(level, Math.random, lang);
-    S.selected = null; S.locked = false;
+    S.selected = null; S.options = []; S.locked = false; S.hasMoved = false;
     S.feedback = null; S.feedbackKind = null;
     const view = modeView(S.question.mode);
-    if (view?.answerKind === 'clock') {
-      S.setH = 12; S.setM = 0; S.activeHand = "minute";
+    if (view?.setClock) {
+      const keepSourceOnClock = S.question.shift && view.answerKind === 'clockTarget';
+      S.setH = keepSourceOnClock ? S.question.sourceH : 12;
+      S.setM = keepSourceOnClock ? S.question.sourceM : 0;
+      S.activeHand = "minute";
     }
-    // Option-pickers: the option builder matches the answer modality.
-    if (view?.answerKind === 'digital')     Object.assign(S, buildDigitalOptions(S.question, level));
-    if (view?.answerKind === 'word')        Object.assign(S, buildWordOptions(S.question, level, lang));
-    if (view?.answerKind === 'ampmTime')    Object.assign(S, buildAmpmOptions(S.question, level));
-    if (view?.answerKind === 'daypartTime') Object.assign(S, buildDaypartOptions(S.question, level));
-    if (view?.answerKind === 'digital24')   Object.assign(S, buildDigital24Options(S.question, level));
+    // Time shifts have their own distractor policy; the other option-pickers
+    // use the builder associated with their answer modality.
+    if (S.question.shift && view?.pickOption) Object.assign(S, buildTimeShiftOptions(S.question, level, lang));
+    else if (view?.answerKind === 'digital')     Object.assign(S, buildDigitalOptions(S.question, level));
+    else if (view?.answerKind === 'word')        Object.assign(S, buildWordOptions(S.question, level, lang));
+    else if (view?.answerKind === 'ampmTime')    Object.assign(S, buildAmpmOptions(S.question, level));
+    else if (view?.answerKind === 'daypartTime') Object.assign(S, buildDaypartOptions(S.question, level));
+    else if (view?.answerKind === 'digital24')   Object.assign(S, buildDigital24Options(S.question, level));
     refresh();
   };
 
@@ -573,8 +636,8 @@ function useClockGame({ levelId = 0, levels = LEVELS, language = DEFAULT_LANGUAG
     } else {
       S.streak = 0;
       const view = modeView(qMode());
-      const correctText = view.answerKind === 'clock'
-        ? textFromQ(S.question, view.promptKind, lang)
+      const correctText = view.setClock
+        ? textFromQ(S.question, S.question.shift ? 'digital' : view.promptKind, lang)
         : textFromQ(S.question, view.answerKind, lang);
       S.feedback = `${ui.correctAnswer}: ${correctText}.`;
       S.feedbackKind = "wrong";
@@ -611,12 +674,6 @@ function useClockGame({ levelId = 0, levels = LEVELS, language = DEFAULT_LANGUAG
     finishQuestion(val === correct);
   };
 
-  const check = () => {
-    if (S.locked) return;
-    const { h, m } = S.question;
-    finishQuestion((S.setM === m) && (S.setH === h));
-  };
-
   const AUTO_SUBMIT_MS = 1200;
   const scheduleAutoSubmit = () => {
     clearTimeout(S.autoSubmitTimer);
@@ -650,11 +707,13 @@ function useClockGame({ levelId = 0, levels = LEVELS, language = DEFAULT_LANGUAG
       S.setH = snapHour(ang);
     }
     refresh();
-    // Stellen modes auto-submit once the hands stop moving.
+    // All setting drills wait briefly after the hands stop moving, which gives
+    // the learner time to finish a two-hand adjustment without an extra step.
     if (isSet()) scheduleAutoSubmit();
   };
-  // Picking up a hand counts as "still working" — cancel any pending submit.
-  const setActiveHand = (h) => { cancelAutoSubmit(); S.activeHand = h; refresh(); };
+  // Picking up a hand counts as "still working" — cancel any pending submit
+  // and reveal the source hands before the drag changes the answer clock.
+  const setActiveHand = (h) => { cancelAutoSubmit(); if (isClockShiftSet()) S.hasMoved = true; S.activeHand = h; refresh(); };
 
   // Clean up any pending auto-submit on unmount / level change / new question.
   React.useEffect(() => () => cancelAutoSubmit(), []);
@@ -677,7 +736,7 @@ function useClockGame({ levelId = 0, levels = LEVELS, language = DEFAULT_LANGUAG
 
   return {
     state: S,
-    actions: { pickOption, check, next, setHandAngle, setActiveHand, startRound,
+    actions: { pickOption, next, setHandAngle, setActiveHand, startRound,
                debugCompleteRound, debugCelebrate },
   };
 }
@@ -692,6 +751,7 @@ function Clock({
   showMinorTicks = true,
   highlightMinute = false,
   h = 12, m = 0,
+  ghostH = null, ghostM = null,
   interactive = false,
   activeHand = "minute",
   onSetAngle,
@@ -713,6 +773,9 @@ function Clock({
   const R = size / 2;
   const targetHourAng = ((h % 12) * 30) + (m * 0.5);
   const targetMinAng  = (m / 60) * 360;
+  const hasGhost = Number.isInteger(ghostH) && Number.isInteger(ghostM);
+  const ghostHourAng = hasGhost ? ((ghostH % 12) * 30) + (ghostM * 0.5) : 0;
+  const ghostMinAng  = hasGhost ? (ghostM / 60) * 360 : 0;
 
   // Unwrap-on-render: the transform we actually set each frame is picked as
   // the equivalent angle (canonical ± k*360°) closest to the previous render.
@@ -944,6 +1007,14 @@ function Clock({
       }} />
       {ticks}
       {numerals}
+      {hasGhost && <>
+        <Hand width={hourW} length={hourLen}
+          color={theme.hourHand || '#1a1a1a'} angle={ghostHourAng}
+          transition="opacity .2s" zIndex={1} opacity={0.28} />
+        <Hand width={minW} length={minLen}
+          color={theme.minHand || '#e8590c'} angle={ghostMinAng}
+          transition="opacity .2s" zIndex={1} opacity={0.24} />
+      </>}
       <Hand width={hourW} length={hourLen}
         color={theme.hourHand || '#1a1a1a'}
         angle={hourAng} transition={transition} zIndex={2} />
@@ -1050,12 +1121,52 @@ function LevelIcon({ tier, active, accent, ink, paper, fillProgress = 0, review 
   </div>;
 }
 
+// Compact visual markers name the skill of each row without competing with
+// the progress route. The marker sits at the row's entry point, so it also
+// reinforces the alternating left/right progression.
+function ChapterGlyph({ chapter, language, accent, ink, paper }) {
+  const label = chapterCopy(chapter, language);
+  const stroke = ink;
+  const common = { fill: 'none', stroke, strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' };
+  let mark;
+  switch (chapter.key) {
+    case 'basics':
+      mark = <><circle cx="12" cy="12" r="7" {...common} /><path d="M12 12V7 M12 12l4 2" {...common} /></>;
+      break;
+    case 'quarters':
+      mark = <><circle cx="12" cy="12" r="7" {...common} /><path d="M12 5v14 M5 12h14" {...common} /><path d="M12 12V5h7" fill={`${accent}55`} stroke="none" /></>;
+      break;
+    case 'five-minute':
+      mark = <><circle cx="12" cy="12" r="7" {...common} /><text x="12" y="15.6" textAnchor="middle"
+        fill={stroke} fontFamily="JetBrains Mono, monospace" fontSize="9" fontWeight="700">5</text></>;
+      break;
+    case 'precision':
+      mark = <><circle cx="12" cy="12" r="7" {...common} /><circle cx="12" cy="12" r="2" fill={accent} stroke="none" />
+        <path d="M12 3v3 M12 18v3 M3 12h3 M18 12h3" {...common} /></>;
+      break;
+    case 'clock-shift':
+      mark = <><circle cx="12" cy="12" r="7" {...common} /><path d="M12 12V7 M12 12l4 2 M5 8a8 8 0 0 1 9-3" {...common} />
+        <path d="M13 4l2 1-1 2" {...common} /></>;
+      break;
+    case 'time-math':
+      mark = <><path d="M7 8v6 M4 11h6 M14 14h6" {...common} /></>;
+      break;
+    default:
+      mark = <circle cx="12" cy="12" r="7" {...common} />;
+  }
+  return <div aria-label={label} title={label} style={{ width: 24, height: 24,
+    display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%',
+    background: paper, border: `1px solid ${ink}38`, boxShadow: `inset 0 1px 0 rgba(255,255,255,0.25)` }}>
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" style={{ display: 'block' }}>{mark}</svg>
+  </div>;
+}
+
 // ============================================================
 // LEVEL TRACK
 // ============================================================
 function LevelTrack({ levels = LEVELS, levelId, setLevelId, mastery, accent, ink, soft, trackBg, paper, language }) {
-  // Multi-row snake: each row alternates direction and a U-turn connects down
-  // when the visible curriculum would otherwise crowd the stops.
+  // The route is chapter-led, not width-led: one row maps to one learner skill
+  // even when languages show a different number of drills in that chapter.
   const hostRef = React.useRef(null);
   const [width, setWidth] = React.useState(0);
   React.useLayoutEffect(() => {
@@ -1067,60 +1178,47 @@ function LevelTrack({ levels = LEVELS, levelId, setLevelId, mastery, accent, ink
     return () => ro.disconnect();
   }, []);
 
-  const N = levels.length;
-  const plan = levelTrackRowPlan(N, width);
-  const { perRow, rowCount, inset, rowSpacing } = plan;
+  const chapters = chapterGroupsForLevels(levels);
+  const inset = 50;
+  const rowSpacing = 44;
+  const firstRowY = 24;
   const innerW = Math.max(0, width - inset * 2);
-  const gap = perRow > 1 ? innerW / (perRow - 1) : 0;
-  const rowY = Array.from({ length: rowCount }, (_, i) => 24 + i * rowSpacing);
-  const height = (rowY[rowY.length - 1] || 24) + 24;
-  const xRight = inset + (perRow - 1) * gap;
+  const indexByKey = new Map(levels.map((level, index) => [level.key, index]));
+  const target = Math.max(0, Math.min(levels.length - 1, levelId));
+  const rows = chapters.map((chapter, row) => {
+    const count = chapter.levels.length;
+    const gap = count > 1 ? innerW / (count - 1) : 0;
+    const y = firstRowY + row * rowSpacing;
+    const forward = row % 2 === 0;
+    const startX = forward ? inset : width - inset;
+    const endX = forward ? width - inset : inset;
+    const xOf = (column) => startX + (forward ? column : -column) * gap;
+    const indexes = chapter.levels.map(level => indexByKey.get(level.key));
+    return { chapter, y, xOf, indexes, forward, startX, endX,
+      glyphX: forward ? inset - 28 : width - inset + 28 };
+  });
+  const height = (rows[rows.length - 1]?.y || firstRowY) + 24;
 
-  const posOf = (i) => {
-    const row = Math.floor(i / perRow);
-    const col = i % perRow;
-    const x = row % 2 === 0
-      ? inset + col * gap
-      : inset + (perRow - 1 - col) * gap;
-    return { x, y: rowY[row] };
+  const routePathTo = (targetIndex) => {
+    if (!rows.length) return '';
+    const parts = [`M ${rows[0].startX} ${rows[0].y}`];
+    for (let row = 0; row < rows.length; row++) {
+      const current = rows[row];
+      const activeColumn = current.indexes.indexOf(targetIndex);
+      if (activeColumn >= 0) {
+        parts.push(`L ${current.xOf(activeColumn)} ${current.y}`);
+        break;
+      }
+      parts.push(`L ${current.endX} ${current.y}`);
+      if (row < rows.length - 1) {
+        const nextY = rows[row + 1].y;
+        parts.push(`A ${rowSpacing / 2} ${rowSpacing / 2} 0 0 ${current.forward ? 1 : 0} ${current.endX} ${nextY}`);
+      }
+    }
+    return parts.join(' ');
   };
-
-  const pathD = width <= 0 || rowCount === 0 ? '' : (() => {
-    const finalRow = Math.floor((N - 1) / perRow);
-    const finalPos = posOf(N - 1);
-    const parts = [`M ${inset} ${rowY[0]}`];
-    for (let row = 0; row < rowCount; row++) {
-      const forward = row % 2 === 0;
-      const rowEnd = row === finalRow ? finalPos.x : (forward ? xRight : inset);
-      parts.push(`L ${rowEnd} ${rowY[row]}`);
-      if (row < rowCount - 1) {
-        const r = rowSpacing / 2;
-        const sweep = forward ? 1 : 0;
-        parts.push(`A ${r} ${r} 0 0 ${sweep} ${rowEnd} ${rowY[row + 1]}`);
-      }
-    }
-    return parts.join(' ');
-  })();
-
-  const progressPathD = width <= 0 || rowCount === 0 ? '' : (() => {
-    const target = Math.max(0, Math.min(N - 1, levelId));
-    const targetRow = Math.floor(target / perRow);
-    const targetPos = posOf(target);
-    const parts = [`M ${inset} ${rowY[0]}`];
-    for (let row = 0; row <= targetRow; row++) {
-      const forward = row % 2 === 0;
-      if (row === targetRow) {
-        parts.push(`L ${targetPos.x} ${targetPos.y}`);
-      } else {
-        const rowEnd = forward ? xRight : inset;
-        parts.push(`L ${rowEnd} ${rowY[row]}`);
-        const r = rowSpacing / 2;
-        const sweep = forward ? 1 : 0;
-        parts.push(`A ${r} ${r} 0 0 ${sweep} ${rowEnd} ${rowY[row + 1]}`);
-      }
-    }
-    return parts.join(' ');
-  })();
+  const pathD = routePathTo(levels.length - 1);
+  const progressPathD = routePathTo(target);
 
   const current = levels[levelId] || levels[0];
   const currentCopy = levelCopy(current, language);
@@ -1150,24 +1248,32 @@ function LevelTrack({ levels = LEVELS, levelId, setLevelId, mastery, accent, ink
               strokeLinecap="round" />
           </svg>
         )}
-        {width > 0 && levels.map((lv, i) => {
-          const { x, y } = posOf(i);
-          const rec = mastery[lv.key];
-          const tier = rec?.tier ?? 0;
-          const active = i === levelId;
-          return (
-            <div key={lv.key}
-              onClick={(e) => { e.stopPropagation(); setLevelId(i); }}
-              style={{ position: 'absolute', left: x, top: y,
-                transform: 'translate(-50%, -50%)',
-                cursor: 'pointer', zIndex: active ? 3 : 2,
-              }}>
-              <LevelIcon tier={tier} active={active} accent={accent} ink={ink} paper={paper}
-                review={!!lv.review}
-                fillProgress={(rec?.best ?? 0) / 7} />
+        {width > 0 && rows.map(({ chapter, y, xOf, glyphX }) => (
+          <React.Fragment key={chapter.key}>
+            <div style={{ position: 'absolute', left: glyphX, top: y,
+              transform: 'translate(-50%, -50%)', pointerEvents: 'none', zIndex: 1 }}>
+              <ChapterGlyph chapter={chapter} language={language} accent={accent} ink={ink} paper={paper} />
             </div>
-          );
-        })}
+            {chapter.levels.map((lv, column) => {
+              const i = indexByKey.get(lv.key);
+              const rec = mastery[lv.key];
+              const tier = rec?.tier ?? 0;
+              const active = i === levelId;
+              return (
+                <div key={lv.key}
+                  onClick={(e) => { e.stopPropagation(); setLevelId(i); }}
+                  style={{ position: 'absolute', left: xOf(column), top: y,
+                    transform: 'translate(-50%, -50%)',
+                    cursor: 'pointer', zIndex: active ? 3 : 2,
+                  }}>
+                  <LevelIcon tier={tier} active={active} accent={accent} ink={ink} paper={paper}
+                    review={!!lv.review}
+                    fillProgress={(rec?.best ?? 0) / 7} />
+                </div>
+              );
+            })}
+          </React.Fragment>
+        ))}
       </div>
     </div>
   );
@@ -1268,11 +1374,16 @@ function Body({ S, actions, level, c, theme, font, labelFont, accent }) {
   // The clock face is shown when *either* side of the mode involves the
   // clock (as prompt for lesen/wort-lesen, or as answer for stellen/
   // wort-stellen). The two no-clock modes drop it entirely.
-  const isRead = view.promptKind === 'clock' && view.answerKind !== 'clock';
+  const isRead = view.promptKind === 'clock' && !view.setClock;
   const isWord = view.promptKind === 'word' || view.answerKind === 'word';
+  const isTimeShift = !!S.question.shift;
+  const isClockShiftSet = isTimeShift && view.answerKind === 'clockTarget';
   const noClock = !view.showClock;
   const showTextPrompt = view.promptKind !== 'clock';
-  const promptValue = showTextPrompt ? textFromQ(S.question, view.promptKind, lang) : '';
+  const promptQuestion = isTimeShift ? timeShiftSourceQ(S.question) : S.question;
+  const renderPromptKind = view.promptKind === 'digitalSource' ? 'digital' : view.promptKind;
+  const promptValue = showTextPrompt ? textFromQ(promptQuestion, renderPromptKind, lang) : '';
+  const shiftCue = isTimeShift ? timeShiftInstruction(S.question.shift, lang) : '';
 
   // Prompt slot — fixed min-height so the clock sits at the same Y in every
   // mode. Content is flex-end-aligned: modes with only a small label leave
@@ -1282,7 +1393,7 @@ function Body({ S, actions, level, c, theme, font, labelFont, accent }) {
   // the mode's answer modality so a future renamed/added mode picks up the
   // right label automatically.
   const labelText =
-    view.answerKind === 'clock'   ? `${ui.setClock}${!isWord && level.hour24 ? ' · 24h' : ''}` :
+    view.setClock                 ? `${ui.setClock}${!isWord && level.hour24 ? ' · 24h' : ''}` :
     view.answerKind === 'digital' ? `${ui.askTime}${level.hour24 ? ' · 24h' : ''}` :
     view.answerKind === 'word'    ? ui.askPhrase :
     view.answerKind === 'ampmTime' ? ui.askAmPm :
@@ -1305,6 +1416,12 @@ function Body({ S, actions, level, c, theme, font, labelFont, accent }) {
         letterSpacing: '0.22em', textTransform: 'uppercase', color: c.soft }}>
         {labelText}
       </div>
+      {isTimeShift && (
+        <div style={{ fontFamily: font, fontWeight: 700, fontSize: 24,
+          color: accent, letterSpacing: '-0.02em', lineHeight: 1.05 }}>
+          {shiftCue}
+        </div>
+      )}
       {showTextPrompt && (
         <div style={{ fontFamily: font, fontWeight: 600, fontSize: promptFontSize,
           color: accent, letterSpacing: promptIsCompactPhrase ? '-0.015em' : '-0.03em',
@@ -1326,7 +1443,10 @@ function Body({ S, actions, level, c, theme, font, labelFont, accent }) {
     <div style={{ display: 'flex', justifyContent: 'center', margin: '10px 0 12px' }}>
       <div style={{ position: 'relative', width: clockSize, height: clockSize }}>
         <Clock theme={theme} size={clockSize}
-          h={isRead ? h : S.setH} m={isRead ? m : S.setM}
+          h={isRead ? (isTimeShift ? S.question.sourceH : h) : S.setH}
+          m={isRead ? (isTimeShift ? S.question.sourceM : m) : S.setM}
+          ghostH={isClockShiftSet && S.hasMoved ? S.question.sourceH : null}
+          ghostM={isClockShiftSet && S.hasMoved ? S.question.sourceM : null}
           highlightMinute={highlight}
           interactive={!isRead && !S.locked} activeHand={S.activeHand}
           onSetAngle={actions.setHandAngle} onPickHand={actions.setActiveHand}

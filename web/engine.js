@@ -203,6 +203,40 @@ function textFromQ(q, kind, language = q.language || DEFAULT_LANGUAGE) {
   }
 }
 
+// Time-shift exercises use ordinary 12-hour clock arithmetic: the result
+// wraps at twelve, exactly as the analog clock face does.
+function shiftTime(h, m, signedMinutes) {
+  const start = (h % 12) * 60 + m;
+  const total = ((start + signedMinutes) % 720 + 720) % 720;
+  const hour = Math.floor(total / 60);
+  return { h: hour === 0 ? 12 : hour, m: total % 60 };
+}
+function shiftCrossesTwelve(h, m, signedMinutes) {
+  const start = (h % 12) * 60 + m;
+  return Math.floor((start + signedMinutes) / 720) !== 0;
+}
+function englishUnit(n, singular, plural) { return `${n} ${n === 1 ? singular : plural}`; }
+function slovakShiftUnit(n, one, few, many) {
+  return `${n} ${n === 1 ? one : n >= 2 && n <= 4 ? few : many}`;
+}
+function timeShiftInstruction(shift, language = DEFAULT_LANGUAGE) {
+  const lang = normalizeLanguage(language);
+  const parts = [];
+  if (shift.hours) {
+    parts.push(lang === 'de' ? `${shift.hours} ${shift.hours === 1 ? 'Stunde' : 'Stunden'}`
+      : lang === 'sk' ? slovakShiftUnit(shift.hours, 'hodinu', 'hodiny', 'hodín')
+      : englishUnit(shift.hours, 'hour', 'hours'));
+  }
+  if (shift.minutes) {
+    parts.push(lang === 'de' ? `${shift.minutes} ${shift.minutes === 1 ? 'Minute' : 'Minuten'}`
+      : lang === 'sk' ? slovakShiftUnit(shift.minutes, 'minútu', 'minúty', 'minút')
+      : englishUnit(shift.minutes, 'minute', 'minutes'));
+  }
+  const duration = parts.join(lang === 'en' ? ' and ' : lang === 'sk' ? ' a ' : ' und ');
+  if (lang === 'sk') return `O ${duration} ${shift.direction === 'earlier' ? 'skôr' : 'neskôr'}`;
+  return `${duration} ${shift.direction === 'earlier' ? (lang === 'de' ? 'früher' : 'earlier') : (lang === 'de' ? 'später' : 'later')}`;
+}
+
 // Each entry holds only the *new* minutes introduced at that learning level.
 // Review levels union several sets to sweep the cumulative skill.
 const MINUTE_SETS = {
@@ -239,7 +273,10 @@ function pickMode(level, rand = Math.random) {
 // hand-map mode → prompt/answer, and a "same modality on both sides"
 // test (in tests.html) makes the bug class structurally unreachable.
 //
-// Modalities: 'clock' | 'digital' | 'word' | 'daypartTime' | 'ampmTime' | 'digital24'.
+// Modalities: 'clock' | 'clockTarget' | 'digital' | 'digitalSource' |
+// 'word' | 'daypartTime' | 'ampmTime' | 'digital24'. The *Target/Source
+// variants identify a role in one arithmetic exercise; their display stays a
+// familiar clock or digital time.
 const MODE_SPECS = {
   'lesen':        { prompt: 'clock',   answer: 'digital' },
   'stellen':      { prompt: 'digital', answer: 'clock'   },
@@ -251,9 +288,22 @@ const MODE_SPECS = {
   'ampm-daypart': { prompt: 'ampmTime',    answer: 'daypartTime' },
   'digital24-ampm': { prompt: 'digital24', answer: 'ampmTime' },
   'ampm-digital24': { prompt: 'ampmTime', answer: 'digital24' },
+  // Arithmetic begins by advancing the very clock the learner sees. The
+  // semantic `clockTarget` answer reuses that surface interactively, while
+  // keeping its source-clock and target-clock roles distinct.
+  'time-shift-clock':          { prompt: 'clock',         answer: 'clockTarget' },
+  'time-shift-digital':        { prompt: 'clock',         answer: 'digital' },
+  'time-shift-word':           { prompt: 'clock',         answer: 'word' },
+  'time-shift-digital-source': { prompt: 'digitalSource', answer: 'digital' },
 };
 const CORE_MODES = ['lesen', 'stellen', 'wort-lesen', 'wort-stellen', 'digital-wort', 'wort-digital'];
 const AMPM_MODES = ['daypart-ampm', 'ampm-daypart', 'digital24-ampm', 'ampm-digital24'];
+// A 24-hour clock review deliberately stays in the two modalities an
+// analogue face can support. Clock-shifting and chip-answer arithmetic each
+// have their own recap so the representation changes only after mastery.
+const HOUR24_MODES = ['lesen', 'stellen'];
+const CLOCK_SHIFT_MODES = ['time-shift-clock'];
+const TIME_SHIFT_MODES = ['time-shift-digital', 'time-shift-word', 'time-shift-digital-source'];
 const ALL_MODES = Object.keys(MODE_SPECS);
 
 // Look up the canonical (prompt, answer, derived flags) for a mode.
@@ -264,8 +314,9 @@ function modeView(mode) {
   return {
     promptKind: spec.prompt,
     answerKind: spec.answer,
-    showClock:  spec.prompt === 'clock' || spec.answer === 'clock',
-    pickOption: spec.answer !== 'clock', // user taps an option vs sets the clock
+    setClock: spec.answer === 'clock' || spec.answer === 'clockTarget',
+    showClock:  spec.prompt === 'clock' || spec.answer === 'clock' || spec.answer === 'clockTarget',
+    pickOption: spec.answer !== 'clock' && spec.answer !== 'clockTarget',
   };
 }
 
@@ -277,7 +328,8 @@ function modeView(mode) {
 // will not require another migration as long as the keys themselves don't
 // change. digital↔word levels are not introduced for full hours (3:00 ↔
 // "drei Uhr" is too obvious) and not for 24h (German clock-words don't
-// distinguish AM/PM, so the answer would be ambiguous).
+// distinguish AM/PM, so word-based practice would be ambiguous). A separate
+// 24-hour review still mixes reading and setting.
 const LEVELS = [
   // Tier blocks all follow the same shape:
   //   lesen → wort-lesen → wort-stellen → stellen   (clock-using pair-of-pairs)
@@ -328,7 +380,123 @@ const LEVELS = [
     title: "Review · AM/PM", sub: "Dayparts and 24h mixed" },
   { key: "lesen-minute",         mode: "lesen",        minuteSet: "minute",  hour24: false, title: "Minutengenau",       sub: "Uhr ablesen · jede Minute" },
   { key: "stellen-minute",       mode: "stellen",      minuteSet: "minute",  hour24: false, title: "Minutengenau stellen", sub: "Uhr stellen · jede Minute" },
+  { key: "review-after-24h",     review: true, modes: HOUR24_MODES, minuteSets: ["volle", "halbe", "viertel", "fuenf"], hour24: true,
+    title: "Wiederholung · 24h", sub: "24h ablesen und stellen" },
+
+  // First move the hands on the source clock itself. Each block adds one
+  // mathematical boundary while the faint source hands appear after the
+  // learner begins moving, preserving a reference without revealing a result.
+  { key: "shift-clock-hours-later", mode: "time-shift-clock", minuteSet: "volle", hour24: false,
+    timeShift: { directions: ['later'], offsets: [{ hours: 1 }, { hours: 2 }, { hours: 3 }], boundary: 'not-twelve' },
+    title: "Uhr weiterstellen", sub: "Volle Stunden später" },
+  { key: "shift-clock-hours-earlier", mode: "time-shift-clock", minuteSet: "volle", hour24: false,
+    timeShift: { directions: ['earlier'], offsets: [{ hours: 1 }, { hours: 2 }, { hours: 3 }], boundary: 'not-twelve' },
+    title: "Uhr zurückstellen", sub: "Volle Stunden früher" },
+  { key: "shift-clock-minutes-same-hour", mode: "time-shift-clock", minuteSets: ["volle", "halbe", "viertel", "fuenf", "minute"], hour24: false,
+    timeShift: { directions: ['later', 'earlier'], offsets: [{ minutes: 7 }, { minutes: 13 }, { minutes: 17 }, { minutes: 22 }], boundary: 'same-hour' },
+    title: "Minuten verschieben", sub: "Noch in derselben Stunde" },
+  { key: "shift-clock-minutes-cross-hour", mode: "time-shift-clock", minuteSets: ["volle", "halbe", "viertel", "fuenf", "minute"], hour24: false,
+    timeShift: { directions: ['later', 'earlier'], offsets: [{ minutes: 17 }, { minutes: 28 }, { minutes: 35 }], boundary: 'cross-hour' },
+    title: "Über die Stunde", sub: "Die Zeiger weiterbewegen" },
+  { key: "shift-clock-through-twelve", mode: "time-shift-clock", minuteSets: ["volle", "halbe", "viertel", "fuenf", "minute"], hour24: false,
+    timeShift: { directions: ['later', 'earlier'], offsets: [{ minutes: 17 }, { minutes: 28 }, { hours: 1, minutes: 17 }], boundary: 'cross-twelve' },
+    title: "Über die zwölf", sub: "Die Uhr läuft weiter" },
+  { key: "review-after-clock-shift", review: true, modes: CLOCK_SHIFT_MODES, minuteSets: ["volle", "halbe", "viertel", "fuenf", "minute"], hour24: false,
+    timeShift: { directions: ['later', 'earlier'], offsets: [{ hours: 1 }, { hours: 2 }, { minutes: 17 }, { minutes: 28 }, { minutes: 35 }, { hours: 1, minutes: 17 }, { hours: 2, minutes: 25 }], boundary: 'any' },
+    title: "Wiederholung · Zeiger", sub: "Uhr vor und zurück stellen" },
+
+  // Then transfer the same calculations into recognition: first from an
+  // analogue source, then from a digital source, always choosing a result.
+  { key: "shift-hours-later", mode: "time-shift-digital", minuteSet: "volle", hour24: false,
+    timeShift: { directions: ['later'], offsets: [{ hours: 1 }, { hours: 2 }, { hours: 3 }], boundary: 'not-twelve' },
+    title: "Stunden später", sub: "Volle Stunden weiterzählen" },
+  { key: "shift-hours-earlier", mode: "time-shift-digital", minuteSet: "volle", hour24: false,
+    timeShift: { directions: ['earlier'], offsets: [{ hours: 1 }, { hours: 2 }, { hours: 3 }], boundary: 'not-twelve' },
+    title: "Stunden früher", sub: "Volle Stunden zurückzählen" },
+  { key: "shift-phrases-later", mode: "time-shift-word", minuteSets: ["halbe", "viertel"], hour24: false,
+    timeShift: { directions: ['later'], offsets: [{ hours: 1 }, { hours: 2 }, { hours: 3 }], boundary: 'not-twelve' },
+    title: "Halbe & Viertel später", sub: "Zeit rechnen · Satz wählen" },
+  { key: "shift-phrases-earlier", mode: "time-shift-word", minuteSets: ["halbe", "viertel"], hour24: false,
+    timeShift: { directions: ['earlier'], offsets: [{ hours: 1 }, { hours: 2 }, { hours: 3 }], boundary: 'not-twelve' },
+    title: "Halbe & Viertel früher", sub: "Zeit rechnen · Satz wählen" },
+  { key: "shift-minutes-later-same-hour", mode: "time-shift-digital", minuteSets: ["volle", "halbe", "viertel", "fuenf", "minute"], hour24: false,
+    timeShift: { directions: ['later'], offsets: [{ minutes: 7 }, { minutes: 13 }, { minutes: 17 }, { minutes: 22 }], boundary: 'same-hour' },
+    title: "Minuten später", sub: "Noch in derselben Stunde" },
+  { key: "shift-minutes-earlier-same-hour", mode: "time-shift-digital", minuteSets: ["volle", "halbe", "viertel", "fuenf", "minute"], hour24: false,
+    timeShift: { directions: ['earlier'], offsets: [{ minutes: 7 }, { minutes: 13 }, { minutes: 17 }, { minutes: 22 }], boundary: 'same-hour' },
+    title: "Minuten früher", sub: "Noch in derselben Stunde" },
+  { key: "shift-minutes-later-cross-hour", mode: "time-shift-digital", minuteSets: ["volle", "halbe", "viertel", "fuenf", "minute"], hour24: false,
+    timeShift: { directions: ['later'], offsets: [{ minutes: 17 }, { minutes: 28 }, { minutes: 35 }], boundary: 'cross-hour' },
+    title: "Über die Stunde · später", sub: "Minuten weiterrechnen" },
+  { key: "shift-minutes-earlier-cross-hour", mode: "time-shift-digital", minuteSets: ["volle", "halbe", "viertel", "fuenf", "minute"], hour24: false,
+    timeShift: { directions: ['earlier'], offsets: [{ minutes: 17 }, { minutes: 28 }, { minutes: 35 }], boundary: 'cross-hour' },
+    title: "Über die Stunde · früher", sub: "Minuten zurückrechnen" },
+  { key: "shift-hours-minutes", mode: "time-shift-digital", minuteSets: ["volle", "halbe", "viertel", "fuenf", "minute"], hour24: false,
+    timeShift: { directions: ['later', 'earlier'], offsets: [{ hours: 1, minutes: 17 }, { hours: 2, minutes: 25 }], boundary: 'not-twelve' },
+    title: "Stunden und Minuten", sub: "Vorwärts und rückwärts rechnen" },
+  { key: "shift-through-twelve", mode: "time-shift-digital", minuteSets: ["volle", "halbe", "viertel", "fuenf", "minute"], hour24: false,
+    timeShift: { directions: ['later', 'earlier'], offsets: [{ minutes: 17 }, { minutes: 28 }, { hours: 1, minutes: 17 }], boundary: 'cross-twelve' },
+    title: "Über die zwölf", sub: "Die Uhr zählt weiter" },
+  { key: "shift-digital-result", mode: "time-shift-digital-source", minuteSets: ["volle", "halbe", "viertel", "fuenf", "minute"], hour24: false,
+    timeShift: { directions: ['later', 'earlier'], offsets: [{ hours: 1 }, { minutes: 17 }, { minutes: 28 }, { hours: 1, minutes: 17 }], boundary: 'any' },
+    title: "Digitale Zeit rechnen", sub: "Zeit sehen · Ergebnis wählen" },
+  { key: "review-after-time-math", review: true, modes: TIME_SHIFT_MODES, minuteSets: ["volle", "halbe", "viertel", "fuenf"], hour24: false,
+    timeShift: { directions: ['later', 'earlier'], offsets: [{ hours: 1 }, { hours: 2 }, { minutes: 17 }, { minutes: 28 }, { minutes: 35 }, { hours: 1, minutes: 17 }, { hours: 2, minutes: 25 }], boundary: 'any' },
+    title: "Wiederholung · Zeitrechnen", sub: "Analoge und digitale Zeiten" },
 ];
+
+// Chapters own the learner-facing grouping, while LEVELS remains the ordered
+// source of truth for the actual curriculum. Keeping stable level keys here
+// makes a new chapter an explicit curriculum decision rather than an effect
+// of how many stops happen to fit across a phone screen.
+const CURRICULUM_CHAPTERS = [
+  { key: 'basics', levelKeys: [
+    'lesen-volle', 'stellen-volle', 'lesen-halbe', 'wort-lesen-halbe',
+    'wort-stellen-halbe', 'stellen-halbe', 'wort-digital-halbe',
+    'digital-wort-halbe', 'review-after-halbe',
+  ] },
+  { key: 'quarters', levelKeys: [
+    'lesen-viertel', 'wort-lesen-viertel', 'wort-stellen-viertel',
+    'stellen-viertel', 'wort-digital-viertel', 'digital-wort-viertel',
+    'review-after-viertel',
+  ] },
+  { key: 'five-minute', levelKeys: [
+    'lesen-fuenf', 'wort-lesen-fuenf', 'wort-stellen-fuenf', 'stellen-fuenf',
+    'wort-digital-fuenf', 'digital-wort-fuenf', 'review-after-fuenf',
+    'sk-review-after-fuenf',
+  ] },
+  { key: 'precision', levelKeys: [
+    'lesen-fuenf-24h', 'stellen-fuenf-24h', 'en-daypart-ampm',
+    'en-ampm-daypart', 'en-digital24-ampm', 'en-ampm-digital24',
+    'en-review-ampm', 'lesen-minute', 'stellen-minute', 'review-after-24h',
+  ] },
+  { key: 'clock-shift', levelKeys: [
+    'shift-clock-hours-later', 'shift-clock-hours-earlier',
+    'shift-clock-minutes-same-hour', 'shift-clock-minutes-cross-hour',
+    'shift-clock-through-twelve', 'review-after-clock-shift',
+  ] },
+  { key: 'time-math', levelKeys: [
+    'shift-hours-later', 'shift-hours-earlier', 'shift-phrases-later',
+    'shift-phrases-earlier', 'shift-minutes-later-same-hour',
+    'shift-minutes-earlier-same-hour', 'shift-minutes-later-cross-hour',
+    'shift-minutes-earlier-cross-hour', 'shift-hours-minutes',
+    'shift-through-twelve', 'shift-digital-result', 'review-after-time-math',
+  ] },
+];
+
+function chapterGroupsForLevels(levels = LEVELS) {
+  const byKey = new Map(levels.map(level => [level.key, level]));
+  const grouped = new Set();
+  const chapters = CURRICULUM_CHAPTERS.map(chapter => {
+    const chapterLevels = chapter.levelKeys
+      .map(key => byKey.get(key))
+      .filter(Boolean);
+    for (const level of chapterLevels) grouped.add(level.key);
+    return { ...chapter, levels: chapterLevels };
+  }).filter(chapter => chapter.levels.length);
+  const remaining = levels.filter(level => !grouped.has(level.key));
+  return remaining.length ? [...chapters, { key: 'other', levelKeys: remaining.map(level => level.key), levels: remaining }] : chapters;
+}
 
 function levelSupportsLanguage(level, language = DEFAULT_LANGUAGE) {
   const lang = normalizeLanguage(language);
@@ -480,6 +648,84 @@ function buildWordOptions(q, level, language = q.language || DEFAULT_LANGUAGE) {
   return { options: shuffle([...opts].slice(0, 4)) };
 }
 
+function timeShiftCandidates(level) {
+  const config = level.timeShift || {};
+  const directions = config.directions || ['later'];
+  const offsets = config.offsets || [{ hours: 1 }];
+  const candidates = [];
+  for (let sourceH = 1; sourceH <= 12; sourceH++) {
+    for (const sourceM of effectiveMinutes(level)) {
+      for (const direction of directions) {
+        for (const offset of offsets) {
+          const hours = offset.hours || 0;
+          const minutes = offset.minutes || 0;
+          const signedMinutes = (direction === 'earlier' ? -1 : 1) * (hours * 60 + minutes);
+          const target = shiftTime(sourceH, sourceM, signedMinutes);
+          const start = (sourceH % 12) * 60 + sourceM;
+          const crossesHour = Math.floor((start + signedMinutes) / 60) !== Math.floor(start / 60);
+          const crossesTwelve = shiftCrossesTwelve(sourceH, sourceM, signedMinutes);
+          const boundary = config.boundary || 'any';
+          const allowed =
+            boundary === 'same-hour' ? !crossesHour :
+            boundary === 'cross-hour' ? crossesHour && !crossesTwelve :
+            boundary === 'cross-twelve' ? crossesTwelve :
+            boundary === 'not-twelve' ? !crossesTwelve : true;
+          if (allowed) candidates.push({
+            sourceH, sourceM, target, direction, hours, minutes, signedMinutes,
+          });
+        }
+      }
+    }
+  }
+  return candidates;
+}
+
+function timeShiftAnswerText(h, m, answerKind, language) {
+  const q = { h, m, dh: h, language, parsed: parseTime(h, m, language) };
+  return textFromQ(q, answerKind, language);
+}
+// A time-shift question stores its source separately because h/m always hold
+// the scored result. Rendering a setting prompt therefore asks this helper
+// for the starting time without weakening the answer/checking contract.
+function timeShiftSourceQ(q) {
+  const language = normalizeLanguage(q?.language || DEFAULT_LANGUAGE);
+  const h = q?.sourceH;
+  const m = q?.sourceM;
+  return { ...q, h, m, dh: h, language, parsed: parseTime(h, m, language) };
+}
+function buildTimeShiftOptions(q, level, language = q.language || DEFAULT_LANGUAGE) {
+  const lang = normalizeLanguage(language);
+  const answerKind = modeView(q.mode || level.mode)?.answerKind || 'digital';
+  const fmt = (h, m) => timeShiftAnswerText(h, m, answerKind, lang);
+  const correct = fmt(q.h, q.m);
+  const opts = new Set([correct]);
+  const { sourceH, sourceM, shift } = q;
+  const sign = shift.direction === 'earlier' ? -1 : 1;
+  const total = shift.hours * 60 + shift.minutes;
+  const add = (delta) => {
+    const candidate = shiftTime(sourceH, sourceM, delta);
+    opts.add(fmt(candidate.h, candidate.m));
+  };
+
+  // These correspond to common calculation slips: doing nothing, moving in
+  // the wrong direction, or applying only one component of a mixed offset.
+  add(0);
+  add(-sign * total);
+  if (shift.hours && shift.minutes) {
+    add(sign * shift.hours * 60);
+    add(sign * shift.minutes);
+  }
+
+  const outcomeMinutes = [...new Set(timeShiftCandidates(level).map(c => c.target.m))];
+  let guard = 0;
+  while (opts.size < 4 && guard++ < 120) {
+    const h = 1 + Math.floor(Math.random() * 12);
+    const m = pickRandom(outcomeMinutes.length ? outcomeMinutes : [0]);
+    opts.add(fmt(h, m));
+  }
+  return { options: shuffle([...opts].slice(0, 4)) };
+}
+
 function oppositeHalfDay(dh) {
   return normalizeHour24(dh + 12);
 }
@@ -572,19 +818,25 @@ function modeUsesAbsoluteTime(mode) {
   return absoluteKinds.has(view.promptKind) || absoluteKinds.has(view.answerKind);
 }
 
-function levelTrackRowPlan(levelCount, width, minGap = 27) {
-  const count = Math.max(0, Math.floor(levelCount || 0));
-  const inset = 30;
-  const rowSpacing = 44;
-  if (count <= 1) return { rowCount: count, perRow: count, inset, rowSpacing };
-  const innerW = Math.max(0, width - inset * 2);
-  const maxStopsPerRow = Math.max(2, Math.floor(innerW / minGap) + 1);
-  const rowCount = Math.max(2, Math.ceil(count / maxStopsPerRow));
-  return { rowCount, perRow: Math.ceil(count / rowCount), inset, rowSpacing };
+function makeTimeShiftQuestion(level, rand = Math.random, language = DEFAULT_LANGUAGE) {
+  const lang = normalizeLanguage(language);
+  const candidates = timeShiftCandidates(level);
+  const picked = candidates[Math.floor(rand() * candidates.length)] || candidates[0];
+  if (!picked) throw new Error(`Time-shift level "${level.key || level.title || 'unknown'}" has no valid questions`);
+  const { sourceH, sourceM, target, direction, hours, minutes } = picked;
+  return {
+    h: target.h, m: target.m, dh: target.h,
+    sourceH, sourceM,
+    shift: { direction, hours, minutes },
+    mode: pickMode(level, rand),
+    language: lang,
+    parsed: parseTime(target.h, target.m, lang),
+  };
 }
 
 // Build a question for a level — used by the game hook and tests.
 function makeQuestion(level, rand = Math.random, language = DEFAULT_LANGUAGE) {
+  if (level.timeShift) return makeTimeShiftQuestion(level, rand, language);
   const lang = normalizeLanguage(language);
   let h = 1 + Math.floor(rand()*12);
   const mins = effectiveMinutes(level);
@@ -778,12 +1030,14 @@ Object.assign(window, {
   DEFAULT_LANGUAGE, LANGUAGES, LANGUAGE_KEY, normalizeLanguage,
   HOUR_NAMES, EN_HOUR_NAMES, SK_HOUR_NAMES, hourName, parseTime, digitalStr, digitalFromQ, wordFromQ,
   hour12From24, ampmPeriodFrom24, ampmTimeFromQ, digital24FromQ, daypartKeyFrom24, daypartTimeFromQ, textFromQ,
-  MINUTE_SETS, LEVELS, CORE_MODES, AMPM_MODES, ALL_MODES, MODE_SPECS, modeView, levelsForLanguage, levelSupportsLanguage, pickRandom, shuffle,
+  shiftTime, shiftCrossesTwelve, timeShiftInstruction,
+  MINUTE_SETS, LEVELS, CURRICULUM_CHAPTERS, chapterGroupsForLevels, CORE_MODES, AMPM_MODES, HOUR24_MODES, CLOCK_SHIFT_MODES, TIME_SHIFT_MODES, ALL_MODES, MODE_SPECS, modeView, levelsForLanguage, levelSupportsLanguage, pickRandom, shuffle,
   effectiveMinutes, pickMode,
-  buildDigitalOptions, buildWordOptions, buildAmpmOptions, buildDaypartOptions, buildDigital24Options,
-  snap5deg, snapHour, snapToAllowedMinutes, minuteSnapGrid, levelTrackRowPlan,
+  buildDigitalOptions, buildWordOptions, buildTimeShiftOptions, buildAmpmOptions, buildDaypartOptions, buildDigital24Options,
+  timeShiftCandidates, timeShiftSourceQ,
+  snap5deg, snapHour, snapToAllowedMinutes, minuteSnapGrid,
   QUARTER_GRID, FUENF_GRID,
-  makeQuestion,
+  makeQuestion, makeTimeShiftQuestion,
   MASTERY_KEY, MASTERY_KEY_V1, MASTERY_KEY_V2, MASTERY_KEY_V3, LEVEL_KEY,
   migrateV1Id, migrateV2ToV3, V2_TO_V3, levelKeyFromStored, levelStorageKey,
   loadAllMastery, saveAllMastery, loadMastery, saveMastery, masteryTier, recordMastery, resetMastery,

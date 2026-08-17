@@ -1,4 +1,4 @@
-const CACHE_NAME = 'clockwork-app-v6';
+const CACHE_NAME = 'clockwork-app-v21';
 
 const APP_SHELL = [
   './',
@@ -47,7 +47,9 @@ function fetchAndCache(request) {
 }
 
 function fromCache(request) {
-  return caches.match(request, { ignoreSearch: true });
+  // Keep a request's query string. The app shell uses stable asset URLs, and
+  // developer/test requests deliberately add one to bypass a prior shell.
+  return caches.match(request);
 }
 
 self.addEventListener('fetch', (event) => {
