@@ -24,6 +24,17 @@ State (current language, current level, and mastery per level) is kept in
 with a two-step confirmation: the first tap arms the reset, and a second tap
 within a short confirmation window commits it.
 
+Tests and phone previews live in `dev/`, outside the deployment folder.
+Serve the repository root on a separate port to use them:
+
+```sh
+python3 -m http.server 8766
+# Tests: http://localhost:8766/dev/tests.html
+# Preview: http://localhost:8766/dev/preview.html
+```
+
+Publish only `web/`. It contains the app and its runtime assets.
+
 ## Files
 
 All runtime files live in `web/`. The repo root holds meta files
@@ -35,8 +46,8 @@ All runtime files live in `web/`. The repo root holds meta files
 | `web/engine.js` | Pure logic — `parseTime`, option builders, snap, mastery. No React, no DOM. Shared with `tests.html`. |
 | `web/sw.js` | Service worker. Precaches the offline app shell and serves cached assets when the network is unavailable. |
 | `web/vendor/` | Committed React, ReactDOM, and Babel standalone files used by `index.html` so the app does not depend on CDNs. |
-| `web/preview.html` | Development preview. Renders `index.html` inside a phone-frame mockup via `<iframe>`. The frame is not part of the app. |
-| `web/tests.html` | In-browser unit tests. Open directly or via the static server. |
+| `dev/preview.html` | Development preview. Renders `index.html` inside a phone-frame mockup via `<iframe>`. The frame is not part of the app. |
+| `dev/tests.html` | In-browser unit tests. Open directly or via the static server. |
 | `web/dandelion_*.png` | Bloom artwork used for level mastery and feedback overlays. |
 | `web/icon.png` | 512×512 app icon — clock face overlaid on `dandelion_single.png`, masked to the flower silhouette. Generated; see [Icon](#icon). |
 | `web/icon-192.png` | 192×192 derivative of `icon.png` for the Android manifest. Generated. |
@@ -93,8 +104,8 @@ the growth icons.
 ## Tests
 
 ```sh
-# after starting the server above
-open http://localhost:8765/tests.html
+# serve the repository root on :8766 as described above
+open http://localhost:8766/dev/tests.html
 ```
 
 The file is self-contained: a tiny harness (`group`, `test`, `eq`, `ok`)

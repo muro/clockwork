@@ -12,12 +12,23 @@ This file provides guidance for AI coding agents when working with code in this 
 # Serve the app (recommended; iOS Safari is picky about file://)
 python3 -m http.server 8765 --directory web
 # App:   http://localhost:8765/index.html
-# Tests: http://localhost:8765/tests.html
+# Tests: http://localhost:8766/dev/tests.html
 ```
+
+Tests and phone previews live in `dev/`, outside the deployment folder.
+Serve the repository root on a separate port to use them:
+
+```sh
+python3 -m http.server 8766
+# Tests: http://localhost:8766/dev/tests.html
+# Preview: http://localhost:8766/dev/preview.html
+```
+
+Publish only `web/`. It contains the app and its runtime assets.
 
 `.claude/launch.json` configures the Claude Code preview server with the same command, on `:8765`.
 
-There is no linter and no CI, and the primary tests use no test runner: they are in-browser assertions in `web/tests.html` that load `engine.js` via a `<script>` tag and run a tiny harness (`group`, `test`, `eq`, `ok`). The page title updates to `N ✓ / M ✗ — Uhrzeit Tests` so a headless check can grep `#summary`. This is the primary test suite — keep engine behavior covered here. (An optional Playwright visual-regression suite exists too; see below. It stays out of the app's zero-build path.)
+There is no linter and no CI, and the primary tests use no test runner: they are in-browser assertions in `dev/tests.html` that load `engine.js` via a `<script>` tag and run a tiny harness (`group`, `test`, `eq`, `ok`). The page title updates to `N ✓ / M ✗ — Uhrzeit Tests` so a headless check can grep `#summary`. This is the primary test suite — keep engine behavior covered here. (An optional Playwright visual-regression suite exists too; see below. It stays out of the app's zero-build path.)
 
 ### Optional visual-regression tests (Playwright)
 
@@ -110,14 +121,14 @@ Use this stance for pending work, local diffs, existing code, and pull requests.
 - `web/engine.js` — pure logic; the only file with unit tests behind it.
 - `web/sw.js` — service worker for the offline app shell. Bump the cache name when cached runtime assets change.
 - `web/vendor/` — committed React, ReactDOM, and Babel standalone runtime files; keep them local so the PWA stays offline-capable.
-- `web/tests.html` — open in a browser to run tests. Self-contained.
-- `web/preview.html` — dev-only; renders `index.html` inside a phone-frame mockup via `<iframe>`. The frame is not part of the shipped app.
+- `dev/tests.html` — open in a browser to run tests. Self-contained.
+- `dev/preview.html` — dev-only; renders `index.html` inside a phone-frame mockup via `<iframe>`. The frame is not part of the shipped app.
 - `web/manifest.webmanifest` — for "Add to Home Screen" on Android/iOS.
 - `tools/build_icon.py` — composites a koralle clock face over `dandelion_single.png` and masks to the dandelion's alpha. Knobs (`R`, `ENAMEL`, color constants) at the top of the file.
 
 ## Conventions
 
-- Work in red-green TDD for behavior changes: add a failing test in `web/tests.html` first, make it pass with the smallest change, then refactor. Run `tests.html` between steps or explain why it was not run.
+- Work in red-green TDD for behavior changes: add a failing test in `dev/tests.html` first, make it pass with the smallest change, then refactor. Run `tests.html` between steps or explain why it was not run.
 - For UI changes, run the app in a browser and check the actual interaction or layout that changed.
 - No build step; do not introduce one. JSX runs through the vendored `@babel/standalone` runtime in the browser.
 - Don't add npm/bundler/test-runner dependencies without an explicit ask.
